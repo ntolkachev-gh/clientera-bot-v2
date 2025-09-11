@@ -34,4 +34,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 # Команда запуска
-CMD ["python", "-m", "src.app"]
+CMD ["python3", "main.py"]
