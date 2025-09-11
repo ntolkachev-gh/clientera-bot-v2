@@ -539,6 +539,40 @@ async def main():
     health_task = asyncio.create_task(health_check_task())
     logger.info("🏥 Запущена задача health check")
 
+    # Создаем HTTP сервер для health check (для Railway)
+    app = web.Application()
+    
+    async def health_check_handler(request):
+        """Health check endpoint для Railway."""
+        try:
+            # Проверяем, что бот работает
+            me = await bot_instance.get_me()
+            return web.json_response({
+                "status": "healthy",
+                "bot_info": {
+                    "id": me.id,
+                    "username": me.username,
+                    "first_name": me.first_name
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return web.json_response({
+                "status": "unhealthy",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }, status=503)
+    
+    app.router.add_get('/health', health_check_handler)
+    
+    # Запускаем HTTP сервер в фоне
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+    logger.info("🌐 HTTP сервер запущен на порту 8080 для health check")
+
     logger.info("🦷 Запускаем бота-консультанта стоматологической клиники...")
 
     try:
@@ -548,6 +582,14 @@ async def main():
     finally:
         health_task.cancel()
         logger.info("🛑 Остановка фоновых задач")
+        
+        # Останавливаем HTTP сервер
+        try:
+            await site.stop()
+            await runner.cleanup()
+            logger.info("🛑 HTTP сервер остановлен")
+        except Exception as e:
+            logger.error(f"Ошибка при остановке HTTP сервера: {e}")
 
         # Отменяем все таймеры неактивности
         for user_id in list(user_inactivity_timers.keys()):
