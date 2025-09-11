@@ -107,7 +107,7 @@ class YClientsAPI:
         endpoint = f'book_dates/{self.company_id}/{staff_id}/{service_id}'
         return await self._make_request('GET', endpoint)
 
-    async def get_book_times(self, staff_id: int, service_id: int, date: str) -> Dict[str, Any]:
+    async def get_book_times(self, staff_id: int, date: str, service_id: Optional[int] = None) -> Dict[str, Any]:
         """Получает доступные времена для записи на конкретную дату"""
         endpoint = f'book_times/{self.company_id}/{staff_id}/{date}'
         return await self._make_request('GET', endpoint)

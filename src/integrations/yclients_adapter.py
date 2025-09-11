@@ -21,11 +21,6 @@ class YClientsAdapter:
         self.service = get_yclients_service()
         self.profile_manager = get_profile_manager()
         
-        # Настройки времени работы для генерации слотов
-        self.work_start_hour = int(os.getenv('CLINIC_START_HOUR', '9'))
-        self.work_end_hour = int(os.getenv('CLINIC_END_HOUR', '18'))
-        self.slot_interval_minutes = int(os.getenv('SLOT_INTERVAL_MINUTES', '30'))
-        
         logger.info("YClients Adapter initialized")
     
     async def list_services(self, category: str = "все", limit: int = 50) -> List[Dict[str, Any]]:
@@ -46,134 +41,60 @@ class YClientsAdapter:
     
     async def search_slots(
         self, 
-        branch_id: int, 
-        service_id: Optional[int] = None,
-        doctor_id: Optional[int] = None,
-        **kwargs
+        doctor_id: int,
+        date: str
     ) -> List[Dict[str, Any]]:
-        """Найти свободные слоты для записи."""
+        """Найти свободные слоты для записи на услугу для конкретного врача на конкретную дату."""
         try:
-            # Извлекаем параметры из kwargs
-            from_date = kwargs.get('from')
-            to_date = kwargs.get('to')
+            logger.info(f"Searching slots for doctor_id={doctor_id}, date={date}")
             
-            logger.info(f"Searching slots: branch_id={branch_id}, service_id={service_id}, doctor_id={doctor_id}, from={from_date}, to={to_date}")
-            logger.debug(f"Parameters: service_id={service_id}, doctor_id={doctor_id}, from_date={from_date}, to_date={to_date}")
-            
-            # Определяем дату поиска
-            if from_date:
-                search_date = from_date
-            else:
-                # Используем завтрашний день по умолчанию
-                tomorrow = datetime.now() + timedelta(days=1)
-                search_date = tomorrow.strftime('%Y-%m-%d')
-            
-            # Получаем название услуги по ID (если указан)
-            service_name = None
-            if service_id:
-                services_result = await self.service.get_services()
-                for service in services_result.get('services', []):
-                    if service.get('id') == service_id:
-                        service_name = service.get('name', '')
-                        break
-            
-            # Получаем имя врача по ID (если указан)
+            # Получаем имя врача по ID
             doctor_name = None
-            if doctor_id:
-                doctors_result = await self.service.get_doctors()
-                for doctor in doctors_result.get('doctors', []):
-                    if doctor.get('id') == doctor_id:
-                        doctor_name = doctor.get('name', '')
-                        break
+            doctors_result = await self.service.get_doctors()
+            for doctor in doctors_result.get('doctors', []):
+                if doctor.get('id') == doctor_id:
+                    doctor_name = doctor.get('name', '')
+                    break
             
-            # Если doctor_id не указан, получаем первого доступного врача
-            if not doctor_id:
-                logger.info("doctor_id not specified, finding first available doctor")
-                doctors_result = await self.service.get_doctors()
-                if doctors_result.get('doctors'):
-                    doctor_id = doctors_result['doctors'][0].get('id')
-                    doctor_name = doctors_result['doctors'][0].get('name', 'Врач')
-                    logger.info(f"Using doctor: {doctor_name} (ID: {doctor_id})")
-                else:
-                    logger.warning("No doctors found, generating fallback slots")
-                    # Генерируем слоты без привязки к конкретному врачу
-                    slots = self._generate_day_slots(search_date, 0, service_id, "Врач")
-                    logger.info(f"Generated {len(slots)} fallback slots")
-                    return slots
-            
-            if not service_id:
-                logger.warning("service_id is required")
+            if not doctor_name:
+                logger.warning(f"Doctor with ID {doctor_id} not found")
                 return []
-                
-            times_data = await self.service.api.get_book_times(doctor_id, service_id, search_date)
+            
+            # Получаем доступные слоты напрямую через API без привязки к конкретной услуге
+            # API endpoint: /book_times/{company_id}/{staff_id}/{date}
+            times_data = await self.service.api.get_book_times(doctor_id, date)
             
             if not times_data.get('success'):
-                logger.warning(f"Failed to get available times: {times_data.get('error', 'Unknown error')}")
-                # Если API вернул ошибку, генерируем слоты на весь день
-                logger.info("API error, generating slots for the whole day as fallback")
-                slots = self._generate_day_slots(search_date, doctor_id, service_id, doctor_name)
-                logger.info(f"Generated {len(slots)} fallback slots")
-                return slots
-
+                logger.warning(f"Failed to get book times for doctor {doctor_id} on {date}: {times_data.get('error', 'Unknown error')}")
+                return []
+            
             times = times_data.get('data', [])
+            if not times:
+                logger.info(f"No available slots found for doctor {doctor_name} on {date}")
+                return []
             
-            # Преобразуем формат ответа для Realtime API
-            slots = []
+            # Формируем список доступных слотов
+            all_slots = []
+            for time_slot in times:
+                time_str = time_slot.get('time', '')
+                if time_str:
+                    slot = {
+                        'datetime': f"{date} {time_str}",
+                        'date': date,
+                        'time': time_str,
+                        'doctor': doctor_name,
+                        'doctor_id': doctor_id,
+                        'available': True
+                    }
+                    all_slots.append(slot)
             
-            # Если есть свободные слоты, используем их
-            if times:
-                logger.info(f"Found {len(times)} available slots from API")
-                for time_slot in times:
-                    time_str = time_slot.get('time', '')
-                    if time_str:
-                        slot = {
-                            'datetime': f"{search_date} {time_str}",
-                            'date': search_date,
-                            'time': time_str,
-                            'doctor': doctor_name or 'Врач',
-                            'doctor_id': doctor_id,
-                            'service_id': service_id,
-                            'available': True
-                        }
-                        slots.append(slot)
-            else:
-                # Если свободных слотов нет, генерируем слоты на весь день
-                logger.info("No available slots found in API response, generating slots for the whole day")
-                slots = self._generate_day_slots(search_date, doctor_id, service_id, doctor_name)
-            
-            logger.info(f"Found {len(slots)} available slots")
-            return slots
+            logger.info(f"YA_SSL: Found {len(all_slots)} available slots for doctor {doctor_name} on {date}")
+            return all_slots
             
         except Exception as e:
             logger.error(f"Error searching slots: {e}")
             return []
     
-    def _generate_day_slots(self, date: str, doctor_id: int, service_id: int, doctor_name: str) -> List[Dict[str, Any]]:
-        """Генерирует слоты на весь день если свободных слотов нет"""
-        slots = []
-        
-        # Используем настройки времени работы из конфигурации
-        start_hour = self.work_start_hour
-        end_hour = self.work_end_hour
-        interval_minutes = self.slot_interval_minutes
-        
-        for hour in range(start_hour, end_hour):
-            for minute in range(0, 60, interval_minutes):
-                time_str = f"{hour:02d}:{minute:02d}"
-                slot = {
-                    'datetime': f"{date} {time_str}",
-                    'date': date,
-                    'time': time_str,
-                    'doctor': doctor_name or 'Врач',
-                    'doctor_id': doctor_id if doctor_id > 0 else None,  # Не указываем ID если он 0
-                    'service_id': service_id,
-                    'available': True,
-                    'generated': True  # Помечаем как сгенерированные слоты
-                }
-                slots.append(slot)
-        
-        logger.info(f"Generated {len(slots)} slots for the whole day ({start_hour}:00-{end_hour}:00, interval: {interval_minutes}min)")
-        return slots
     
     async def create_appointment(
         self,

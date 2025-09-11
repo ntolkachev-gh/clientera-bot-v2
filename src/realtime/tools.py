@@ -7,7 +7,6 @@ from typing import Dict, List, Any
 
 from .events import Tool
 
-
 # YCLIENTS tool schemas
 YCLIENTS_TOOLS: List[Tool] = [
     Tool(
@@ -37,7 +36,7 @@ YCLIENTS_TOOLS: List[Tool] = [
             "required": []
         }
     ),
-    
+
     Tool(
         name="yclients_search_slots",
         type="function",
@@ -45,33 +44,20 @@ YCLIENTS_TOOLS: List[Tool] = [
         parameters={
             "type": "object",
             "properties": {
-                "branch_id": {
-                    "type": "integer",
-                    "description": "ID филиала клиники"
-                },
-                "service_id": {
-                    "type": "integer",
-                    "description": "ID услуги"
-                },
                 "doctor_id": {
                     "type": "integer",
-                    "description": "ID врача (опционально)"
+                    "description": "ID врача"
                 },
-                "from": {
+                "date": {
                     "type": "string",
                     "format": "date",
-                    "description": "Дата начала поиска в формате YYYY-MM-DD"
-                },
-                "to": {
-                    "type": "string",
-                    "format": "date",
-                    "description": "Дата окончания поиска в формате YYYY-MM-DD"
+                    "description": "Дата поиска в формате YYYY-MM-DD "
                 }
             },
-            "required": ["branch_id", "service_id", "from", "to"]
+            "required": ["doctor_id", "date"]
         }
     ),
-    
+
     Tool(
         name="yclients_create_appointment",
         type="function",
@@ -112,7 +98,7 @@ YCLIENTS_TOOLS: List[Tool] = [
             "required": ["service_id", "doctor_id", "datetime", "client_name", "client_phone"]
         }
     ),
-    
+
     Tool(
         name="yclients_list_doctors",
         type="function",
@@ -129,7 +115,7 @@ YCLIENTS_TOOLS: List[Tool] = [
             "required": []
         }
     ),
-    
+
     Tool(
         name="get_user_info",
         type="function",
@@ -145,10 +131,10 @@ YCLIENTS_TOOLS: List[Tool] = [
             "required": []
         }
     ),
-    
+
     Tool(
         name="register_user",
-        type="function", 
+        type="function",
         description="Зарегистрировать нового пользователя в системе с созданием профиля в YClients",
         parameters={
             "type": "object",
@@ -172,7 +158,7 @@ YCLIENTS_TOOLS: List[Tool] = [
             "required": ["telegram_id", "name", "phone"]
         }
     ),
-    
+
     Tool(
         name="book_appointment_with_profile",
         type="function",
@@ -189,7 +175,7 @@ YCLIENTS_TOOLS: List[Tool] = [
                     "description": "Название услуги"
                 },
                 "doctor": {
-                    "type": "string", 
+                    "type": "string",
                     "description": "Имя врача"
                 },
                 "datetime": {
@@ -205,9 +191,9 @@ YCLIENTS_TOOLS: List[Tool] = [
             "required": ["telegram_id", "service", "doctor", "datetime"]
         }
     ),
-    
+
     Tool(
-        name="sync_user_profile", 
+        name="sync_user_profile",
         type="function",
         description="Синхронизировать профиль пользователя с данными из YClients",
         parameters={
@@ -218,7 +204,7 @@ YCLIENTS_TOOLS: List[Tool] = [
                     "description": "ID пользователя в Telegram"
                 },
                 "phone": {
-                    "type": "string", 
+                    "type": "string",
                     "description": "Номер телефона для поиска в YClients (опционально)",
                     "pattern": "^\\+7\\d{10}$"
                 }
@@ -226,9 +212,8 @@ YCLIENTS_TOOLS: List[Tool] = [
             "required": ["telegram_id"]
         }
     ),
-    
-]
 
+]
 
 # System instructions for the AI assistant
 SYSTEM_INSTRUCTIONS = """Ты — ассистент стоматологической клиники.
@@ -400,11 +385,10 @@ SYSTEM_INSTRUCTIONS = """Ты — ассистент стоматологиче�
 Увидимся в клинике! 😊 Если возникнут вопросы — обращайтесь.»"
 """
 
-
 # Tool name to function mapping
 TOOL_FUNCTIONS = {
     "yclients_list_services": "list_services",
-    "yclients_search_slots": "search_slots", 
+    "yclients_search_slots": "search_slots",
     "yclients_create_appointment": "create_appointment",
     "yclients_list_doctors": "list_doctors",
     "get_user_info": "get_user_info",
@@ -433,9 +417,9 @@ def get_tools_for_openai() -> List[Dict[str, Any]]:
     """Get tools in OpenAI Realtime API format."""
     from typing import Dict, Any
     import logging
-    
+
     logger = logging.getLogger(__name__)
-    
+
     tools_dict = []
     for tool in YCLIENTS_TOOLS:
         tools_dict.append({
@@ -444,6 +428,6 @@ def get_tools_for_openai() -> List[Dict[str, Any]]:
             "description": tool.description,
             "parameters": tool.parameters
         })
-    
+
     logger.info(f"Loaded {len(tools_dict)} tools from tools.py: {[t['name'] for t in tools_dict]}")
     return tools_dict
