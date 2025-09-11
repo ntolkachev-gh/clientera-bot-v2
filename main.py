@@ -373,12 +373,22 @@ async def text_handler(message: Message) -> None:
             if stream_controller and not stream_controller.accumulated_text.strip():
                 # Если через 15 секунд нет текста, возможно function call завис
                 logger.warning(f"⚠️ Через 15 секунд нет текстового ответа для {user_id}, проверяем...")
+                logger.info(f"🔍 Состояние стрима: {stream_controller.state}")
                 
-                # Принудительно запрашиваем генерацию ответа
+                # Сначала отменяем текущий ответ, если он есть
+                try:
+                    cancel_event = {"type": "response.cancel"}
+                    await realtime_client._send_event(cancel_event)
+                    logger.info(f"❌ Отменили зависший ответ для {user_id}")
+                    await asyncio.sleep(1)  # Даем время на отмену
+                except Exception as e:
+                    logger.error(f"Ошибка отмены ответа: {e}")
+                
+                # Принудительно запрашиваем новую генерацию ответа
                 try:
                     response_event = {"type": "response.create"}
                     await realtime_client._send_event(response_event)
-                    logger.info(f"🔄 Принудительно запросили генерацию ответа для {user_id}")
+                    logger.info(f"🔄 Принудительно запросили новую генерацию ответа для {user_id}")
                 except Exception as e:
                     logger.error(f"Ошибка принудительного запроса ответа: {e}")
             
@@ -411,8 +421,14 @@ async def text_handler(message: Message) -> None:
                 try:
                     await realtime_client.cancel_stream(user_id)
                     await thinking_msg.edit_text(
-                        "⏰ <b>Извините, обработка запроса заняла слишком много времени</b>\n\n"
-                        "Попробуйте задать вопрос проще или обратитесь по телефону:\n"
+                        "⏰ <b>Извините, AI-консультант не отвечает</b>\n\n"
+                        "Возможные причины:\n"
+                        "• Высокая нагрузка на сервис\n"
+                        "• Технические проблемы с AI\n"
+                        "• Сложный запрос требует больше времени\n\n"
+                        "<b>Что делать:</b>\n"
+                        "• Попробуйте задать вопрос проще\n"
+                        "• Или обратитесь напрямую:\n"
                         "📞 +7 (495) 123-45-67",
                         parse_mode="HTML"
                     )
@@ -440,8 +456,14 @@ async def text_handler(message: Message) -> None:
                     stream_controller.state == "idle"):
                     
                     logger.warning(f"🔧 Function call выполнился, но нет текстового ответа для {user_id}")
+                    logger.info(f"🔍 Детали стрима: state={stream_controller.state}, text_length={len(stream_controller.accumulated_text)}")
+                    
                     try:
-                        # Принудительно запрашиваем генерацию
+                        # Отменяем текущий ответ и запрашиваем новый
+                        cancel_event = {"type": "response.cancel"}
+                        await realtime_client._send_event(cancel_event)
+                        await asyncio.sleep(0.5)
+                        
                         response_event = {"type": "response.create"}
                         await realtime_client._send_event(response_event)
                         logger.info(f"🔄 Принудительный запрос генерации для {user_id}")
