@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Копируем файлы зависимостей
-COPY requirements.txt pyproject.toml ./
+COPY requirements.txt ./
 
 # Устанавливаем Python зависимости
 RUN pip install --no-cache-dir --upgrade pip && \
