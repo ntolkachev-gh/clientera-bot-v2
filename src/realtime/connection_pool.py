@@ -118,26 +118,17 @@ class RealtimeConnectionPool:
         await self._initialization_task
     
     async def _initialize_connections(self) -> None:
-        """Initialize all connections in the pool."""
-        logger.info(f"🔄 Creating {self.pool_size} connections...")
-        
-        tasks = []
-        for i in range(self.pool_size):
-            tasks.append(self._create_connection(i))
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        successful = sum(1 for r in results if not isinstance(r, Exception))
-        if successful == 0:
-            raise RuntimeError("Failed to create any connections in the pool")
-        
-        logger.info(f"Connection pool initialized with {successful}/{self.pool_size} connections")
+        """Initialize the connection pool (no pre-created connections)."""
+        logger.info(f"🔄 Connection pool initialized (connections will be created on demand)")
+        # Пул готов к работе, соединения будут создаваться по требованию
     
     async def _create_connection(self, connection_id: int) -> ConnectionStatus:
         """Create a single connection."""
         try:
             logger.info(f"Creating connection #{connection_id}")
-            client = OpenAIRealtimeClient(self.yclients_adapter)
+            # Создаем клиент с временным user_id для инициализации пула
+            # Реальные клиенты будут создаваться по требованию
+            client = OpenAIRealtimeClient(self.yclients_adapter, user_id=0)
             await client.connect()
             
             status = ConnectionStatus(connection_id, client)
@@ -153,39 +144,41 @@ class RealtimeConnectionPool:
     async def get_connection_for_user(self, user_id: int) -> Tuple[OpenAIRealtimeClient, int]:
         """
         Get a connection for a specific user.
+        Creates a new client for each user since OpenAIRealtimeClient is user-specific.
         
         Returns:
             Tuple of (client, connection_id)
         """
         async with self._lock:
-            # Check if user already has a connection (sticky sessions)
+            # Check if user already has a connection
             if user_id in self.user_connections:
                 conn = self.user_connections[user_id]
-                if conn.is_available:
+                if conn.is_available and conn.client.user_id == user_id:
                     logger.debug(f"User {user_id} reusing connection #{conn.connection_id}")
                     return conn.client, conn.connection_id
                 else:
                     # Remove stale connection mapping
                     del self.user_connections[user_id]
             
-            # Select connection based on strategy
-            connection = await self._select_connection()
-            if not connection:
-                # Try to create a new connection if pool not full
-                if len(self.connections) < self.pool_size:
-                    connection = await self._create_connection(len(self.connections))
-                else:
-                    raise RuntimeError("No available connections in pool")
-            
-            # Assign user to connection
-            connection.active_users.add(user_id)
-            self.user_connections[user_id] = connection
-            connection.update_stats()
-            
-            logger.info(f"User {user_id} assigned to connection #{connection.connection_id} "
-                       f"(active: {connection.active_count}/{self.max_users_per_connection})")
-            
-            return connection.client, connection.connection_id
+            # Create a new client for this user
+            try:
+                logger.info(f"Creating new connection for user {user_id}")
+                client = OpenAIRealtimeClient(self.yclients_adapter, user_id=user_id)
+                await client.connect()
+                
+                # Create a new connection status
+                connection_id = len(self.connections)
+                connection = ConnectionStatus(connection_id, client)
+                connection.active_users.add(user_id)
+                self.connections.append(connection)
+                self.user_connections[user_id] = connection
+                
+                logger.info(f"User {user_id} assigned to new connection #{connection_id}")
+                return client, connection_id
+                
+            except Exception as e:
+                logger.error(f"Failed to create connection for user {user_id}: {e}")
+                raise
     
     async def _select_connection(self) -> Optional[ConnectionStatus]:
         """Select a connection based on the configured strategy."""

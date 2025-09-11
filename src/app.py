@@ -241,7 +241,7 @@ class TelegramBotApp:
         await cleanup_realtime_client()
         
         # Cleanup cache
-        cleanup_cache()
+        await cleanup_cache()
         
         logger.info("👋 Application shutdown completed")
 
