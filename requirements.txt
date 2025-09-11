@@ -1,0 +1,32 @@
+# Core dependencies
+aiogram==3.10.0
+aiohttp==3.9.5
+asyncio-throttle==1.0.2
+
+# OpenAI and WebSocket
+websockets==12.0
+openai==1.40.0
+
+# HTTP client
+httpx==0.27.0
+
+# YClients API
+yclients-api
+ujson
+
+# Configuration and validation
+pydantic==2.8.2
+pydantic-settings==2.4.0
+python-dotenv==1.0.1
+
+# Logging
+structlog==24.2.0
+
+# Retry logic
+tenacity==8.5.0
+
+# Cache utilities
+cachetools==5.4.0
+
+# Legacy bot dependencies (for compatibility)
+python-telegram-bot==21.6
