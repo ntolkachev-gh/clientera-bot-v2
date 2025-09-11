@@ -375,22 +375,26 @@ async def text_handler(message: Message) -> None:
                 logger.warning(f"⚠️ Через 15 секунд нет текстового ответа для {user_id}, проверяем...")
                 logger.info(f"🔍 Состояние стрима: {stream_controller.state}")
                 
+                # Проверяем, не было ли уже попыток восстановления
+                retry_count = getattr(stream_controller, 'retry_count', 0)
+                if retry_count >= 2:
+                    logger.warning(f"⚠️ Превышено количество попыток восстановления для {user_id}, завершаем")
+                    await realtime_client.cancel_stream(user_id)
+                    return
+                
+                # Увеличиваем счетчик попыток
+                stream_controller.retry_count = retry_count + 1
+                
                 # Сначала отменяем текущий ответ, если он есть
                 try:
-                    cancel_event = {"type": "response.cancel"}
-                    await realtime_client._send_event(cancel_event)
+                    await realtime_client.cancel_stream(user_id)
                     logger.info(f"❌ Отменили зависший ответ для {user_id}")
-                    await asyncio.sleep(1)  # Даем время на отмену
+                    await asyncio.sleep(2)  # Даем больше времени на отмену
                 except Exception as e:
                     logger.error(f"Ошибка отмены ответа: {e}")
                 
-                # Принудительно запрашиваем новую генерацию ответа
-                try:
-                    response_event = {"type": "response.create"}
-                    await realtime_client._send_event(response_event)
-                    logger.info(f"🔄 Принудительно запросили новую генерацию ответа для {user_id}")
-                except Exception as e:
-                    logger.error(f"Ошибка принудительного запроса ответа: {e}")
+                # НЕ создаем новый response здесь - пусть система сама восстановится
+                logger.info(f"🔄 Ждем автоматического восстановления для {user_id} (попытка {retry_count + 1}/2)")
             
             # Затем ждем еще 45 секунд (общий таймаут 60 секунд)
             await asyncio.sleep(45)

@@ -46,7 +46,7 @@ class YClientsAdapter:
     ) -> List[Dict[str, Any]]:
         """Найти свободные слоты для записи на услугу для конкретного врача на конкретную дату."""
         try:
-            logger.info(f"Searching slots for doctor_id={doctor_id}, date={date}")
+            logger.info(f"YA_SSL: Searching slots for doctor_id={doctor_id}, date={date}")
             
             # Получаем имя врача по ID
             doctor_name = None
@@ -57,7 +57,7 @@ class YClientsAdapter:
                     break
             
             if not doctor_name:
-                logger.warning(f"Doctor with ID {doctor_id} not found")
+                logger.warning(f"YA_SSL: Doctor with ID {doctor_id} not found")
                 return []
             
             # Получаем доступные слоты напрямую через API без привязки к конкретной услуге
@@ -65,12 +65,12 @@ class YClientsAdapter:
             times_data = await self.service.api.get_book_times(doctor_id, date)
             
             if not times_data.get('success'):
-                logger.warning(f"Failed to get book times for doctor {doctor_id} on {date}: {times_data.get('error', 'Unknown error')}")
+                logger.warning(f"YA_SSL: Failed to get book times for doctor {doctor_id} on {date}: {times_data.get('error', 'Unknown error')}")
                 return []
             
             times = times_data.get('data', [])
             if not times:
-                logger.info(f"No available slots found for doctor {doctor_name} on {date}")
+                logger.info(f"YA_SSL: No available slots found for doctor {doctor_name} on {date}")
                 return []
             
             # Формируем список доступных слотов
@@ -92,7 +92,7 @@ class YClientsAdapter:
             return all_slots
             
         except Exception as e:
-            logger.error(f"Error searching slots: {e}")
+            logger.error(f"YA_SSL: Error searching slots: {e}")
             return []
     
     

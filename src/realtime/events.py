@@ -286,6 +286,8 @@ class StreamController(BaseModel):
     state: StreamState = StreamState.IDLE
     accumulated_text: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    response_created_at: Optional[datetime] = None
+    retry_count: int = 0
     
     class Config:
         use_enum_values = True

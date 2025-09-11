@@ -514,14 +514,30 @@ class OpenAIRealtimeClient:
         logger.info(f"📤 Sent function result for call_id: {call_id}")
         
         # Небольшая задержка для обработки
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.2)
         
-        # ВАЖНО: После отправки результата функции запрашиваем продолжение генерации
-        response_event = {
-            "type": "response.create"
-        }
-        await self._send_event(response_event)
-        logger.info(f"🔄 Requested text generation after function call {call_id}")
+        # Проверяем, есть ли активный стрим для этого пользователя
+        active_stream = None
+        for user_id, stream in self.active_streams.items():
+            if stream.state not in [StreamState.DONE, StreamState.ERROR, StreamState.CANCELLED]:
+                active_stream = stream
+                break
+        
+        if active_stream:
+            # ВАЖНО: После отправки результата функции запрашиваем продолжение генерации
+            # Добавляем дополнительные параметры для стабильности
+            response_event = {
+                "type": "response.create",
+                "response": {
+                    "modalities": ["text"],
+                    "temperature": 1.1,
+                    "max_output_tokens": 1500
+                }
+            }
+            await self._send_event(response_event)
+            logger.info(f"🔄 Requested text generation after function call {call_id}")
+        else:
+            logger.warning(f"⚠️ No active stream found after function call {call_id}, skipping response.create")
     
     async def _handle_response_done(self, event_data: Dict[str, Any]) -> None:
         """Handle response done event."""
@@ -548,6 +564,9 @@ class OpenAIRealtimeClient:
                 # Обновляем response_id (может быть новый после function call)
                 old_response_id = getattr(stream, 'response_id', None)
                 stream.response_id = response_id
+                
+                # Добавляем таймстамп создания response для отслеживания зависших ответов
+                stream.response_created_at = datetime.utcnow()
                 stream_updated = True
                 
                 if old_response_id != response_id:
@@ -558,6 +577,9 @@ class OpenAIRealtimeClient:
         
         if not stream_updated:
             logger.warning(f"⚠️ Не найден активный стрим для response_id {response_id}")
+            
+        # Запускаем задачу мониторинга зависшего response
+        asyncio.create_task(self._monitor_response_timeout(response_id))
     
     async def _handle_error(self, event_data: Dict[str, Any]) -> None:
         """Handle error event."""
@@ -592,6 +614,56 @@ class OpenAIRealtimeClient:
                 return stream
         
         return None
+    
+    async def _monitor_response_timeout(self, response_id: str) -> None:
+        """Monitor response for timeout and cancel if hanging."""
+        # Ждем 20 секунд - если за это время нет никакого ответа, отменяем
+        await asyncio.sleep(20)
+        
+        # Ищем стрим по response_id
+        stream = self._find_stream_by_response_id(response_id)
+        if not stream:
+            return
+            
+        # Проверяем, не получили ли мы уже какой-то текст
+        if stream.accumulated_text.strip():
+            logger.debug(f"Response {response_id} уже получил текст, мониторинг не нужен")
+            return
+            
+        # Проверяем, не завершен ли уже стрим
+        if stream.state in [StreamState.DONE, StreamState.ERROR, StreamState.CANCELLED]:
+            return
+            
+        # Проверяем таймстамп создания response
+        if hasattr(stream, 'response_created_at'):
+            time_elapsed = (datetime.utcnow() - stream.response_created_at).total_seconds()
+            if time_elapsed > 20:
+                logger.warning(f"⏰ Response {response_id} завис более 20 секунд без ответа, отменяем")
+                
+                try:
+                    # Отменяем зависший response
+                    cancel_event = {"type": "response.cancel"}
+                    await self._send_event(cancel_event)
+                    logger.info(f"❌ Отменен зависший response {response_id}")
+                    
+                    # Ждем немного и пробуем создать новый
+                    await asyncio.sleep(1)
+                    
+                    # Создаем новый response только если стрим все еще активен
+                    if stream.state not in [StreamState.DONE, StreamState.ERROR, StreamState.CANCELLED]:
+                        response_event = {
+                            "type": "response.create",
+                            "response": {
+                                "modalities": ["text"],
+                                "temperature": 1.0,  # Немного снижаем температуру для стабильности
+                                "max_output_tokens": 1500
+                            }
+                        }
+                        await self._send_event(response_event)
+                        logger.info(f"🔄 Создан новый response взамен зависшего {response_id}")
+                        
+                except Exception as e:
+                    logger.error(f"Ошибка при отмене зависшего response {response_id}: {e}")
     
     async def ensure_connected(self) -> None:
         """Ensure WebSocket is connected, reconnect if needed."""
@@ -676,10 +748,18 @@ class OpenAIRealtimeClient:
                         "type": "response.cancel"
                     }
                     await self._send_event(cancel_event)
+                    
+                    # Ждем немного, чтобы отмена прошла
+                    await asyncio.sleep(0.1)
                 else:
                     logger.debug(f"Нет активного response для отмены у пользователя {user_id}")
             
             stream.state = StreamState.CANCELLED
+            
+            # Очищаем response_id для предотвращения дальнейших попыток
+            if hasattr(stream, 'response_id'):
+                stream.response_id = None
+                
             logger.info(f"🗑️ Очищен стрим для пользователя {user_id}")
             
         except Exception as e:
