@@ -425,6 +425,8 @@ async def text_handler(message: Message) -> None:
         # Добавляем периодическую проверку для предотвращения "заедания"
         async def periodic_check():
             """Периодически проверяем и принудительно обновляем сообщение."""
+            nonlocal last_sent_text, last_update_time
+            
             for i in range(12):  # Проверяем 12 раз с интервалом 5 секунд = 60 секунд
                 await asyncio.sleep(5)
                 
@@ -456,6 +458,7 @@ async def text_handler(message: Message) -> None:
                         clean_text = stream_controller.accumulated_text.replace(" <i>_</i>", "").replace(" <i> </i>", "").strip()
                         await thinking_msg.edit_text(clean_text, parse_mode="HTML")
                         last_sent_text = stream_controller.accumulated_text
+                        last_update_time = time.time()
                     except Exception as e:
                         logger.error(f"Ошибка принудительного обновления: {e}")
                 
