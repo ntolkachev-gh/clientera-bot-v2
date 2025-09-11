@@ -29,9 +29,9 @@ YCLIENTS_TOOLS: List[Tool] = [
                 "limit": {
                     "type": "integer",
                     "description": "Максимальное количество услуг",
-                    "default": 20,
+                    "default": 202,
                     "minimum": 1,
-                    "maximum": 100
+                    "maximum": 202
                 }
             },
             "required": []
