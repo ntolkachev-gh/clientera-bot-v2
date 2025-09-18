@@ -260,7 +260,7 @@ class OpenAIRealtimeClient:
         
         # Log full instructions (system prompt)
         instructions = session_config.get('instructions', '')
-        logger.info(f"📝 System instructions (length: {len(instructions)} chars):")
+        logger.info(f"System instructions (length: {len(instructions)} chars):")
         logger.info(f"Instructions: {instructions}")
     
     async def _send_event(self, event: Any) -> None:

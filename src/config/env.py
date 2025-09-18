@@ -63,8 +63,7 @@ class Settings(BaseSettings):
     WS_MAX_USERS_PER_CONNECTION: int = Field(20, description="Max concurrent users per connection")
     WS_POOL_STRATEGY: str = Field("least_connections", description="Load balancing strategy")
     
-    @field_validator("LOG_LEVEL")
-    @classmethod
+    @validator("LOG_LEVEL")
     def validate_log_level(cls, v):
         """Validate log level."""
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -72,24 +71,21 @@ class Settings(BaseSettings):
             raise ValueError(f"LOG_LEVEL must be one of {valid_levels}")
         return v.upper()
     
-    @field_validator("TG_BOT_TOKEN")
-    @classmethod
+    @validator("TG_BOT_TOKEN")
     def validate_bot_token(cls, v):
         """Validate bot token format."""
         if not v or ":" not in v:
             raise ValueError("Invalid bot token format")
         return v
     
-    @field_validator("OPENAI_API_KEY")
-    @classmethod
+    @validator("OPENAI_API_KEY")
     def validate_openai_key(cls, v):
         """Validate OpenAI API key."""
         if not v or not v.startswith("sk-"):
             raise ValueError("Invalid OpenAI API key format")
         return v
     
-    @field_validator("OPENAI_TEMPERATURE")
-    @classmethod
+    @validator("OPENAI_TEMPERATURE")
     def validate_temperature(cls, v):
         """Validate OpenAI temperature value."""
         if not 0.0 <= v <= 2.0:
@@ -115,7 +111,7 @@ class Settings(BaseSettings):
     
     def mask_sensitive_data(self) -> dict:
         """Get config dict with masked sensitive data for logging."""
-        config = self.model_dump()
+        config = self.dict()
         
         # Mask sensitive fields
         sensitive_fields = [
