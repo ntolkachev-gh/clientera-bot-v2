@@ -4,9 +4,12 @@ Main application entry point for Telegram bot with OpenAI Realtime API.
 """
 
 import asyncio
+import fcntl
+import os
 import signal
 import sys
 from contextlib import asynccontextmanager
+from typing import Dict, Optional
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -25,6 +28,9 @@ from .utils.logger import get_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
+# User inactivity timeout (1 hour)
+INACTIVITY_TIMEOUT = 3600
+
 
 class TelegramBotApp:
     """Main Telegram bot application."""
@@ -37,6 +43,72 @@ class TelegramBotApp:
         self.site: web.TCPSite = None
         self.realtime_client = None
         self.connection_pool = None
+        self.user_inactivity_timers: Dict[int, asyncio.Task] = {}
+        self._process_lock_fd = None
+    
+    def acquire_process_lock(self) -> None:
+        """Acquire process lock to prevent multiple instances."""
+        lock_file = "/tmp/dental_bot.lock"
+        try:
+            self._process_lock_fd = open(lock_file, 'w')
+            fcntl.lockf(self._process_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self._process_lock_fd.write(str(os.getpid()))
+            self._process_lock_fd.flush()
+            logger.info("Process lock acquired successfully")
+        except IOError:
+            logger.error("Another instance is already running!")
+            logger.error("Check processes: ps aux | grep dental_bot")
+            sys.exit(1)
+    
+    def release_process_lock(self) -> None:
+        """Release process lock."""
+        if self._process_lock_fd:
+            try:
+                self._process_lock_fd.close()
+                os.unlink("/tmp/dental_bot.lock")
+                logger.info("Process lock released")
+            except Exception as e:
+                logger.warning(f"Failed to release process lock: {e}")
+    
+    async def reset_user_inactivity_timer(self, user_id: int) -> None:
+        """Reset inactivity timer for user."""
+        # Cancel existing timer
+        if user_id in self.user_inactivity_timers:
+            self.user_inactivity_timers[user_id].cancel()
+        
+        # Create new timer
+        async def timeout_handler():
+            try:
+                await asyncio.sleep(INACTIVITY_TIMEOUT)
+                logger.info(f"User {user_id} inactivity timeout reached")
+                
+                # Cancel active streams for this user
+                if self.connection_pool:
+                    try:
+                        await self.connection_pool.cancel_user_streams(user_id)
+                        logger.info(f"Cancelled streams for inactive user {user_id}")
+                    except Exception as e:
+                        logger.error(f"Error cancelling streams for user {user_id}: {e}")
+                
+                # Remove timer
+                if user_id in self.user_inactivity_timers:
+                    del self.user_inactivity_timers[user_id]
+                    
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Error in inactivity timeout handler: {e}")
+        
+        # Start new timer
+        self.user_inactivity_timers[user_id] = asyncio.create_task(timeout_handler())
+        logger.debug(f"🔄 Inactivity timer reset for user {user_id}")
+    
+    async def cancel_user_inactivity_timer(self, user_id: int) -> None:
+        """Cancel inactivity timer for user."""
+        if user_id in self.user_inactivity_timers:
+            self.user_inactivity_timers[user_id].cancel()
+            del self.user_inactivity_timers[user_id]
+            logger.debug(f"Inactivity timer cancelled for user {user_id}")
         
     async def create_bot(self) -> Bot:
         """Create and configure bot instance."""
@@ -171,7 +243,7 @@ class TelegramBotApp:
                         
                         # Log pool stats periodically
                         stats = self.connection_pool.get_pool_stats()
-                        logger.info(f"📊 Pool stats: {stats['total_active_users']} active users, "
+                        logger.info(f"Pool stats: {stats['total_active_users']} active users, "
                                   f"{stats['healthy_connections']}/{stats['pool_size']} healthy connections")
                     
                     logger.debug("Background cleanup completed")
@@ -187,8 +259,11 @@ class TelegramBotApp:
     
     async def startup(self) -> None:
         """Application startup."""
-        logger.info("Starting Telegram bot application...")
-        logger.info(f"Configuration: {settings.mask_sensitive_data()}")
+        # Acquire process lock first
+        self.acquire_process_lock()
+        
+        logger.info("TBA_STU: Starting Telegram bot application...")
+        logger.info(f"TBA_STU: Configuration: {settings.mask_sensitive_data()}")
         
         # Create bot and dispatcher
         self.bot = await self.create_bot()
@@ -207,14 +282,14 @@ class TelegramBotApp:
             self.app = await self.create_web_app()
             await self.start_webhook_server()
             
-            logger.info("🚀 Bot started in webhook mode")
-            logger.info(f"📡 Webhook URL: {settings.TG_WEBHOOK_URL}{settings.TG_WEBHOOK_PATH}")
-            logger.info(f"🌐 Server listening on port {settings.TG_WEBHOOK_PORT}")
+            logger.info("TBA_STU: Bot started in webhook mode")
+            logger.info(f"TBA_STU: Webhook URL =  {settings.TG_WEBHOOK_URL}{settings.TG_WEBHOOK_PATH}")
+            logger.info(f"TBA_STU: Server listening on port {settings.TG_WEBHOOK_PORT}")
         
         else:
             # Development: polling mode
-            logger.info("🚀 Bot started in polling mode")
-            logger.info("📡 Using long polling for development")
+            logger.info("TBA_STU: Bot started in polling mode")
+            logger.info("TBA_STU: Using long polling for development")
             
             # Start polling
             await self.dp.start_polling(
@@ -225,7 +300,12 @@ class TelegramBotApp:
     
     async def shutdown(self) -> None:
         """Application shutdown."""
-        logger.info("Shutting down Telegram bot application...")
+        logger.info("TBA_SHD: Shutting down Telegram bot application...")
+        
+        # Cancel all inactivity timers
+        for user_id in list(self.user_inactivity_timers.keys()):
+            await self.cancel_user_inactivity_timer(user_id)
+        logger.info("TBA_SHD: All inactivity timers cancelled")
         
         # Stop webhook server
         await self.stop_webhook_server()
@@ -243,11 +323,25 @@ class TelegramBotApp:
         # Cleanup cache
         await cleanup_cache()
         
-        logger.info("👋 Application shutdown completed")
+        # Release process lock
+        self.release_process_lock()
+        
+        logger.info("TBA_SHD: Application shutdown completed")
 
 
 # Global app instance
 app_instance: TelegramBotApp = None
+
+
+def get_app_instance() -> Optional[TelegramBotApp]:
+    """Get global app instance."""
+    return app_instance
+
+
+async def reset_user_inactivity_timer_global(user_id: int) -> None:
+    """Global function to reset user inactivity timer."""
+    if app_instance:
+        await app_instance.reset_user_inactivity_timer(user_id)
 
 
 @asynccontextmanager

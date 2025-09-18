@@ -15,6 +15,22 @@ from ..config.env import get_settings
 settings = get_settings()
 
 
+class TLSErrorFilter(logging.Filter):
+    """Filter to suppress TLS handshake errors from aiohttp."""
+
+    def filter(self, record):
+        """Filter out TLS-related error messages."""
+        message = record.getMessage()
+        if "Invalid method encountered" in message:
+            return False
+        if "BadStatusLine" in message:
+            return False
+        if "SSL handshake failed" in message:
+            return False
+        if "TLS handshake timeout" in message:
+            return False
+        return True
+
 def mask_sensitive_data(logger, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
     """Mask sensitive data in log messages."""
     if "event" in event_dict:
@@ -84,6 +100,13 @@ def configure_logging() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("websockets").setLevel(logging.WARNING)
     logging.getLogger("aiogram").setLevel(logging.INFO)
+    
+    # Apply TLS error filter to aiohttp loggers
+    tls_filter = TLSErrorFilter()
+    aiohttp_logger = logging.getLogger('aiohttp.server')
+    aiohttp_logger.addFilter(tls_filter)
+    aiohttp_access_logger = logging.getLogger('aiohttp.access')
+    aiohttp_access_logger.addFilter(tls_filter)
 
 
 def get_logger(name: str) -> structlog.BoundLogger:

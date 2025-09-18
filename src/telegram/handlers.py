@@ -33,6 +33,38 @@ async def start_handler(message: Message) -> None:
     
     logger.info(f"Start command from user {user_id}")
     
+    # Check if user profile exists, if not - try to get Telegram profile info
+    try:
+        yclients_adapter = get_yclients_adapter()
+        profile_result = await yclients_adapter.get_user_profile(user_id)
+        has_profile = profile_result is not None
+    except Exception as e:
+        logger.warning(f"Error checking user profile {user_id}: {e}")
+        has_profile = False
+
+    # If no profile exists, try to get information from Telegram
+    if not has_profile:
+        try:
+            telegram_profile = await yclients_adapter.get_telegram_profile(user_id)
+            if telegram_profile.get("success"):
+                data = telegram_profile["data"]
+                telegram_name = data.get("telegram_first_name") or user_name
+                logger.info(f"📱 Got Telegram profile for {user_id}: {telegram_name}")
+                
+                # Create basic profile with Telegram information
+                try:
+                    await yclients_adapter.get_or_create_user_profile(
+                        telegram_id=user_id,
+                        name=telegram_name
+                    )
+                    logger.info(f"✅ Created profile from Telegram data for {user_id}")
+                except Exception as profile_error:
+                    logger.error(f"Error creating profile from Telegram: {profile_error}")
+            else:
+                logger.info(f"❌ Telegram profile not available for {user_id}")
+        except Exception as e:
+            logger.error(f"Error getting Telegram profile: {e}")
+    
     welcome_text = f"""🦷 <b>Добро пожаловать в стоматологию «Белые зубы»!</b>
 
 Привет, {user_name}! Я — ваш AI-ассистент. Помогу:
@@ -156,6 +188,13 @@ async def text_message_handler(message: Message, bot: Bot) -> None:
     
     logger.info(f"Text message from user {user_id}: {user_text[:50]}...")
     
+    # Reset user inactivity timer
+    try:
+        from ..app import reset_user_inactivity_timer_global
+        await reset_user_inactivity_timer_global(user_id)
+    except Exception as e:
+        logger.debug(f"Could not reset inactivity timer for user {user_id}: {e}")
+    
     # Rate limiting check
     if rate_limiter.is_rate_limited(user_id):
         remaining = rate_limiter.get_remaining_requests(user_id)
@@ -190,9 +229,14 @@ async def text_message_handler(message: Message, bot: Bot) -> None:
         last_sent_text = ""
         
         async def on_delta(delta: str, full_text: str) -> None:
-            """Handle text delta updates."""
+            """Handle text delta updates with advanced recovery."""
             nonlocal accumulated_text, last_sent_text
             accumulated_text = full_text
+            
+            # Clean cursor artifacts
+            import re
+            clean_text = full_text.replace(" <i>_</i>", "").replace(" <i> </i>", "")
+            clean_text = re.sub(r'\s*_\s*$', '', clean_text)
             
             # Throttle message edits
             key = f"{user_id}:{thinking_message.message_id}"
@@ -205,19 +249,28 @@ async def text_message_handler(message: Message, bot: Bot) -> None:
                         text=content,
                         parse_mode="HTML"
                     )
+                    logger.debug(f"📝 Updated message for user {user_id} (length: {len(content)})")
                 except Exception as e:
-                    logger.error(f"Failed to edit message: {e}")
+                    error_msg = str(e)
+                    if "Flood control exceeded" in error_msg or "Too Many Requests" in error_msg:
+                        logger.debug(f"⏳ Rate limit for user {user_id}, skipping update")
+                    elif "message is not modified" in error_msg:
+                        logger.debug(f"📝 Message not modified for user {user_id}")
+                    else:
+                        logger.warning(f"⚠️ Error updating message for user {user_id}: {e}")
             
-            await throttler.throttled_edit(key, full_text, edit_message)
+            await throttler.throttled_edit(key, clean_text, edit_message)
         
         async def on_done(final_text: str) -> None:
-            """Handle completion."""
+            """Handle completion with guaranteed delivery."""
             nonlocal accumulated_text, last_sent_text
             accumulated_text = final_text
             
-            # Final message edit
-            key = f"{user_id}:{thinking_message.message_id}"
+            # Clean final text
+            import re
+            clean_final = final_text.replace(" <i>_</i>", "").replace(" <i> </i>", "").replace("_", "").strip()
             
+            # Final message edit with retry logic
             async def edit_message(content: str) -> None:
                 try:
                     await bot.edit_message_text(
@@ -226,27 +279,79 @@ async def text_message_handler(message: Message, bot: Bot) -> None:
                         text=content,
                         parse_mode="HTML"
                     )
+                    logger.info(f"✅ Final message delivered to user {user_id} (length: {len(content)})")
                 except Exception as e:
-                    logger.error(f"Failed to edit final message: {e}")
+                    error_msg = str(e)
+                    if "Flood control exceeded" in error_msg or "Too Many Requests" in error_msg:
+                        logger.warning(f"⏳ Rate limit in finalization for user {user_id}, retrying...")
+                        await asyncio.sleep(5)
+                        try:
+                            await bot.edit_message_text(
+                                chat_id=message.chat.id,
+                                message_id=thinking_message.message_id,
+                                text=content,
+                                parse_mode="HTML"
+                            )
+                            logger.info(f"Final message delivered after delay for user {user_id}")
+                        except Exception as retry_e:
+                            logger.error(f"Retry finalization error for user {user_id}: {retry_e}")
+                    else:
+                        logger.error(f"Failed to edit final message for user {user_id}: {e}")
             
-            await throttler.throttled_edit(key, final_text, edit_message, force=True)
-            logger.info(f"Streaming completed for user {user_id}")
+            # Force final update without throttling
+            if clean_final.strip():
+                await edit_message(clean_final)
+                last_sent_text = clean_final
+            
+            logger.info(f"✅ Streaming completed for user {user_id}")
         
         async def on_error(error: Exception) -> None:
-            """Handle streaming errors."""
+            """Handle streaming errors with smart recovery."""
             nonlocal accumulated_text, last_sent_text
-            logger.error(f"Streaming error for user {user_id}: {error}")
+            logger.error(f"❌ Stream error for user {user_id}: {error}")
             
-            error_text = "😔 <b>Произошла ошибка</b>\n\n"
+            error_str = str(error).lower()
             
-            if "rate limit" in str(error).lower():
-                error_text += "Сервис временно перегружен. Попробуйте через минуту."
-            elif "timeout" in str(error).lower():
-                error_text += "Время ожидания истекло. Попробуйте сформулировать запрос проще."
+            # Smart error handling based on error type
+            if "quota" in error_str or "limit" in error_str or "insufficient" in error_str:
+                error_text = """💳 <b>Временные технические проблемы</b>
+
+AI-консультант временно недоступен из-за превышения лимитов API.
+
+🔧 <b>Что делать:</b>
+• Попробуйте позже через 10-15 минут
+• Или обратитесь напрямую по телефону:
+
+📞 <b>+7 (495) 123-45-67</b>
+
+Извините за неудобства! 😔"""
+            elif "timeout" in error_str:
+                error_text = """⏰ <b>Извините, AI-консультант не отвечает</b>
+
+Возможные причины:
+• Высокая нагрузка на сервис
+• Технические проблемы с AI
+• Сложный запрос требует больше времени
+
+<b>Что делать:</b>
+• Попробуйте задать вопрос проще
+• Или обратитесь напрямую:
+📞 +7 (495) 123-45-67"""
+            elif "rate limit" in error_str:
+                error_text = """⏳ <b>Превышен лимит запросов</b>
+
+Сервис временно перегружен.
+Попробуйте через минуту.
+
+💡 <i>Это ограничение помогает обеспечить качественную работу для всех пользователей.</i>"""
             else:
-                error_text += "Сервис временно недоступен. Попробуем позже или выберем другое время?"
-            
-            error_text += "\n\n💡 <i>Используйте /help для просмотра примеров запросов.</i>"
+                error_text = """😔 <b>Произошла ошибка</b>
+
+Не удалось обработать ваш запрос.
+Попробуйте еще раз или обратитесь по телефону:
+📞 +7 (495) 123-45-67
+
+💡 <i>Используйте /help для примеров запросов.</i>"""
             
             try:
                 await bot.edit_message_text(
@@ -255,8 +360,9 @@ async def text_message_handler(message: Message, bot: Bot) -> None:
                     text=error_text,
                     parse_mode="HTML"
                 )
+                logger.info(f"📤 Sent error message to user {user_id}")
             except Exception as e:
-                logger.error(f"Failed to edit error message: {e}")
+                logger.error(f"Failed to send error message to user {user_id}: {e}")
         
         # Get the actual client for this user to set callbacks
         client, _ = await connection_pool.get_connection_for_user(user_id)

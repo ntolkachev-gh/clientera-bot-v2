@@ -301,6 +301,22 @@ class RealtimeConnectionPool:
             }
         }
     
+    async def cancel_user_streams(self, user_id: int) -> None:
+        """Cancel all active streams for a specific user."""
+        try:
+            if user_id in self.user_connections:
+                conn = self.user_connections[user_id]
+                if conn.client and hasattr(conn.client, 'cancel_stream'):
+                    await conn.client.cancel_stream(user_id)
+                    logger.info(f"🗑️ Cancelled streams for user {user_id}")
+                
+                # Remove user from connection
+                conn.active_users.discard(user_id)
+                del self.user_connections[user_id]
+                
+        except Exception as e:
+            logger.error(f"Error cancelling streams for user {user_id}: {e}")
+    
     async def cleanup(self) -> None:
         """Clean up all connections in the pool."""
         logger.info("🧹 Cleaning up connection pool")
