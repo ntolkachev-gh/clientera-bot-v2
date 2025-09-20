@@ -11,6 +11,7 @@ from dataclasses import dataclass, asdict
 import asyncio
 
 from .yclients_service import get_yclients_service
+from ..config.env import get_settings
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -64,17 +65,27 @@ class UserProfileManager:
         """Инициализация менеджера профилей."""
         self.cache_file = cache_file
         self.profiles: Dict[int, UserProfile] = {}
-        self.service = get_yclients_service()
-        self.api = self.service.api  # Используем API с настроенным user_token
+        self.settings = get_settings()
+        
+        # В демо-режиме не инициализируем реальный сервис
+        if not self.settings.DEMO:
+            self.service = get_yclients_service()
+            self.api = self.service.api  # Используем API с настроенным user_token
+            
+            # Диагностика user_token
+            if self.api.user_token:
+                logger.info(f"✅ UserProfileManager инициализирован с user_token: {self.api.user_token[:10]}...")
+            else:
+                logger.warning("⚠️ UserProfileManager инициализирован БЕЗ user_token - могут быть проблемы с созданием клиентов")
+        else:
+            self.service = None
+            self.api = None
+            logger.info("UserProfileManager инициализирован в демо-режиме")
+        
         self._load_profiles()
         
-        # Диагностика user_token
-        if self.api.user_token:
-            logger.info(f"✅ UserProfileManager инициализирован с user_token: {self.api.user_token[:10]}...")
-        else:
-            logger.warning("⚠️ UserProfileManager инициализирован БЕЗ user_token - могут быть проблемы с созданием клиентов")
-        
-        logger.info(f"Инициализирован менеджер профилей, загружено {len(self.profiles)} профилей")
+        mode = "DEMO" if self.settings.DEMO else "PRODUCTION"
+        logger.info(f"Инициализирован менеджер профилей в режиме {mode}, загружено {len(self.profiles)} профилей")
     
     async def _update_telegram_info(self, telegram_id: int) -> None:
         """Обновляет профиль информацией из Telegram."""
@@ -186,6 +197,11 @@ class UserProfileManager:
             return profile
         
         try:
+            # В демо-режиме пропускаем поиск в YClients
+            if self.settings.DEMO:
+                logger.info(f"Пропускаем поиск клиента в YClients (демо-режим) для {search_phone}")
+                return None
+                
             # Ищем клиента в YClients
             search_result = await self.api.find_or_create_client("", search_phone)
             
@@ -255,6 +271,21 @@ class UserProfileManager:
         """Регистрирует нового пользователя в системе."""
         logger.info(f"Регистрация нового пользователя {telegram_id}: {name}, {phone}")
         
+        # В демо-режиме не создаем клиентов в YClients, просто создаем локальный профиль
+        if self.settings.DEMO:
+            logger.info(f"Создаем локальный профиль в демо-режиме для {name}")
+            profile = UserProfile(
+                telegram_id=telegram_id,
+                name=name,
+                phone=phone,
+                created_at=datetime.now(),
+                last_updated=datetime.now(),
+                is_verified=True  # В демо-режиме считаем всех верифицированными
+            )
+            self.profiles[telegram_id] = profile
+            self._save_profiles()
+            return profile
+            
         # Проверяем наличие user_token
         if not self.api.user_token:
             logger.warning("⚠️ Нет user_token для создания клиента в YClients")

@@ -58,8 +58,13 @@ class OpenAIRealtimeClient:
         self._reconnect_attempts = 0
         self._max_reconnect_attempts = 10
         self._should_reconnect = True
-        self._last_pong_time = datetime.utcnow()
+        self._last_pong_time: Optional[datetime] = None  # Set only after first successful pong
         self._created_at = datetime.utcnow()
+        self._reconnecting = False  # Prevent multiple reconnection tasks
+        self._last_reconnect_time: Optional[datetime] = None
+        self._consecutive_failures = 0
+        self._circuit_breaker_open = False
+        self._circuit_breaker_open_time: Optional[datetime] = None
         
         logger.info(f"🔗 Created dedicated OpenAI client for user {user_id}")
         
@@ -107,6 +112,10 @@ class OpenAIRealtimeClient:
     async def disconnect(self) -> None:
         """Disconnect from OpenAI Realtime API."""
         self._should_reconnect = False
+        self._reconnecting = False  # Reset reconnection flag
+        self._circuit_breaker_open = False  # Reset circuit breaker
+        self._circuit_breaker_open_time = None
+        self._consecutive_failures = 0
         
         if self.websocket and not self.websocket.closed:
             logger.info("Disconnecting from OpenAI Realtime API...")
@@ -143,38 +152,43 @@ class OpenAIRealtimeClient:
         """Monitor WebSocket connection health."""
         logger.info("🔍 Started connection monitoring")
         
+        # Initialize last pong time to now when monitoring starts
+        self._last_pong_time = datetime.utcnow()
+        
         while self._should_reconnect and self.is_connected:
             try:
                 # Check if websocket is still alive
                 if not self.websocket or self.websocket.closed:
-                    logger.warning(" WebSocket is closed, triggering reconnection")
+                    logger.warning("💔 WebSocket is closed, triggering reconnection")
                     self.is_connected = False
-                    self._connection_task = asyncio.create_task(self._reconnect())
+                    await self._trigger_reconnection()
                     break
                 
-                # Check if we haven't received pong for too long
-                time_since_pong = (datetime.utcnow() - self._last_pong_time).seconds
-                if time_since_pong > settings.WS_PING_TIMEOUT * 2:
-                    logger.warning(f" No pong received for {time_since_pong}s, connection may be dead")
-                    self.is_connected = False
-                    self._connection_task = asyncio.create_task(self._reconnect())
-                    break
+                # Check if we haven't received pong for too long (only if we've sent pings before)
+                if self._last_pong_time:
+                    time_since_pong = (datetime.utcnow() - self._last_pong_time).total_seconds()
+                    max_pong_wait = settings.WS_PING_TIMEOUT * 3  # Allow 3x timeout before considering dead
+                    if time_since_pong > max_pong_wait:
+                        logger.warning(f"⏰ No pong received for {time_since_pong:.1f}s (max: {max_pong_wait}s), connection may be dead")
+                        self.is_connected = False
+                        await self._trigger_reconnection()
+                        break
                 
                 # Send ping to check connection
                 try:
                     pong_waiter = await self.websocket.ping()
                     await asyncio.wait_for(pong_waiter, timeout=settings.WS_PING_TIMEOUT)
                     self._last_pong_time = datetime.utcnow()
-                    logger.debug("Ping/pong successful")
+                    logger.debug("✅ Ping/pong successful")
                 except asyncio.TimeoutError:
-                    logger.warning("Ping timeout, connection may be dead")
+                    logger.warning(f"⏱️ Ping timeout after {settings.WS_PING_TIMEOUT}s, connection may be dead")
                     self.is_connected = False
-                    self._connection_task = asyncio.create_task(self._reconnect())
+                    await self._trigger_reconnection()
                     break
                 except Exception as e:
-                    logger.warning(f"Ping failed: {e}")
+                    logger.warning(f"❌ Ping failed: {e}")
                     self.is_connected = False
-                    self._connection_task = asyncio.create_task(self._reconnect())
+                    await self._trigger_reconnection()
                     break
                 
                 # Wait before next check
@@ -184,41 +198,102 @@ class OpenAIRealtimeClient:
                 logger.info("Connection monitoring cancelled")
                 break
             except Exception as e:
-                logger.error(f" Error in connection monitoring: {e}")
+                logger.error(f"💥 Error in connection monitoring: {e}")
                 await asyncio.sleep(5)  # Wait before retrying
         
         logger.info("Connection monitoring stopped")
     
+    async def _trigger_reconnection(self) -> None:
+        """Trigger reconnection if not already in progress."""
+        if self._reconnecting:
+            logger.debug("Reconnection already in progress, skipping")
+            return
+            
+        self._reconnecting = True
+        self._connection_task = asyncio.create_task(self._reconnect())
+    
     async def _reconnect(self) -> None:
-        """Reconnect to WebSocket with exponential backoff."""
-        if not self._should_reconnect:
-            logger.info("Reconnection disabled, not attempting to reconnect")
-            return
-            
-        if self._reconnect_attempts >= self._max_reconnect_attempts:
-            logger.error(f"Max reconnection attempts ({self._max_reconnect_attempts}) reached, giving up")
-            self._should_reconnect = False
-            return
-        
-        # Exponential backoff
-        delay = min(2 ** self._reconnect_attempts, 30)  # Max 30 seconds
-        logger.warning(f"⏳ Attempting to reconnect in {delay}s... (attempt {self._reconnect_attempts + 1}/{self._max_reconnect_attempts})")
-        
-        await asyncio.sleep(delay)
-        
+        """Reconnect to WebSocket with exponential backoff and circuit breaker."""
         try:
-            await self.connect()
-            logger.info("Successfully reconnected to Realtime API")
+            if not self._should_reconnect:
+                logger.info("Reconnection disabled, not attempting to reconnect")
+                return
             
-            # Restore any active streams if needed
-            if self.active_streams:
-                logger.info(f"Restoring {len(self.active_streams)} active streams")
+            # Check circuit breaker
+            if self._circuit_breaker_open:
+                if self._circuit_breaker_open_time:
+                    time_since_open = (datetime.utcnow() - self._circuit_breaker_open_time).total_seconds()
+                    # Try to close circuit breaker after 5 minutes
+                    if time_since_open < 300:
+                        logger.warning(f"🚫 Circuit breaker open, skipping reconnection (will retry in {300 - time_since_open:.0f}s)")
+                        return
+                    else:
+                        logger.info("🔧 Attempting to close circuit breaker")
+                        self._circuit_breaker_open = False
+                        self._consecutive_failures = 0
                 
-        except Exception as e:
-            logger.error(f" Reconnection attempt failed: {e}")
-            if self._should_reconnect:
-                # Schedule another reconnection attempt
-                self._connection_task = asyncio.create_task(self._reconnect())
+            if self._reconnect_attempts >= self._max_reconnect_attempts:
+                logger.error(f"❌ Max reconnection attempts ({self._max_reconnect_attempts}) reached, opening circuit breaker")
+                self._circuit_breaker_open = True
+                self._circuit_breaker_open_time = datetime.utcnow()
+                self._should_reconnect = False
+                return
+            
+            # Check if we're reconnecting too frequently
+            if self._last_reconnect_time:
+                time_since_last = (datetime.utcnow() - self._last_reconnect_time).total_seconds()
+                if time_since_last < 5:  # Less than 5 seconds since last attempt
+                    self._consecutive_failures += 1
+                    if self._consecutive_failures > 5:
+                        logger.warning(f"🚫 Too many consecutive failures ({self._consecutive_failures}), opening circuit breaker")
+                        self._circuit_breaker_open = True
+                        self._circuit_breaker_open_time = datetime.utcnow()
+                        return
+            
+            # Exponential backoff with jitter and circuit breaker consideration
+            base_delay = min(2 ** self._reconnect_attempts, 60)  # Max 60 seconds
+            if self._consecutive_failures > 0:
+                base_delay += self._consecutive_failures * 5  # Add 5s per consecutive failure
+                
+            # Add some jitter to avoid thundering herd
+            import random
+            jitter = random.uniform(0.1, 0.3) * base_delay
+            delay = base_delay + jitter
+            
+            logger.warning(f"⏳ Attempting to reconnect in {delay:.1f}s... (attempt {self._reconnect_attempts + 1}/{self._max_reconnect_attempts}, failures: {self._consecutive_failures})")
+            
+            await asyncio.sleep(delay)
+            
+            # Check if we should still reconnect after delay
+            if not self._should_reconnect:
+                logger.info("Reconnection disabled during delay, aborting")
+                return
+            
+            self._last_reconnect_time = datetime.utcnow()
+            
+            try:
+                await self.connect()
+                logger.info("✅ Successfully reconnected to Realtime API")
+                
+                # Reset failure counters on successful connection
+                self._consecutive_failures = 0
+                self._circuit_breaker_open = False
+                self._circuit_breaker_open_time = None
+                
+                # Restore any active streams if needed
+                if self.active_streams:
+                    logger.info(f"🔄 Restoring {len(self.active_streams)} active streams")
+                    
+            except Exception as e:
+                logger.error(f"❌ Reconnection attempt failed: {e}")
+                self._consecutive_failures += 1
+                
+                if self._should_reconnect:
+                    # Schedule another reconnection attempt
+                    self._reconnect_attempts += 1
+                    await self._trigger_reconnection()
+        finally:
+            self._reconnecting = False
     
     async def _initialize_session(self) -> None:
         """Initialize session with configuration."""
@@ -322,7 +397,7 @@ class OpenAIRealtimeClient:
             # Always try to reconnect unless explicitly disabled
             if self._should_reconnect:
                 logger.info("🔄 Планирую переподключение...")
-                self._connection_task = asyncio.create_task(self._reconnect())
+                await self._trigger_reconnection()
             else:
                 logger.info("Переподключение отключено")
                 # Mark all active streams as error
@@ -337,7 +412,7 @@ class OpenAIRealtimeClient:
             # Try to reconnect on unexpected errors too
             if self._should_reconnect:
                 logger.info("🔄 Планирую переподключение после ошибки...")
-                self._connection_task = asyncio.create_task(self._reconnect())
+                await self._trigger_reconnection()
             
         finally:
             logger.info("🛑 Event listener stopped")
@@ -466,7 +541,7 @@ class OpenAIRealtimeClient:
         function_mapping = {
             "yclients_list_services": self.yclients_adapter.list_services,
             "yclients_search_slots": self.yclients_adapter.search_slots,
-            "yclients_create_appointment": self.yclients_adapter.create_appointment,
+            "yclients_create_appointment": self.yclients_adapter.yclients_create_appointment,
             "yclients_list_doctors": self.yclients_adapter.list_doctors,
             "get_user_info": self.yclients_adapter.get_user_info,
             "register_user": self.yclients_adapter.register_user,
@@ -816,8 +891,13 @@ class OpenAIRealtimeClient:
             "should_reconnect": self._should_reconnect,
             "active_streams": len(self.active_streams),
             "pending_function_calls": len(self.pending_function_calls),
-            "last_pong_time": self._last_pong_time.isoformat(),
+            "last_pong_time": self._last_pong_time.isoformat() if self._last_pong_time else None,
             "websocket_closed": not self.websocket or self.websocket.closed,
+            "consecutive_failures": self._consecutive_failures,
+            "circuit_breaker_open": self._circuit_breaker_open,
+            "circuit_breaker_open_time": self._circuit_breaker_open_time.isoformat() if self._circuit_breaker_open_time else None,
+            "last_reconnect_time": self._last_reconnect_time.isoformat() if self._last_reconnect_time else None,
+            "reconnecting": self._reconnecting,
         }
 
 

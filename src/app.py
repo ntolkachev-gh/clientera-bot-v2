@@ -17,13 +17,24 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
-from .config.env import get_settings
-from .integrations.cache import cleanup_cache
-from .integrations.yclients_adapter import get_yclients_adapter
-from .realtime.client import cleanup_realtime_client, get_realtime_client
-from .realtime.connection_pool import cleanup_connection_pool, get_connection_pool
-from .telegram.handlers import get_handlers_router
-from .utils.logger import get_logger
+try:
+    # Попытка относительного импорта (когда запускается как модуль)
+    from .config.env import get_settings
+    from .integrations.cache import cleanup_cache
+    from .integrations.yclients_adapter import get_yclients_adapter
+    from .realtime.client import cleanup_realtime_client, get_realtime_client
+    from .realtime.connection_pool import cleanup_connection_pool, get_connection_pool
+    from .telegram.handlers import get_handlers_router
+    from .utils.logger import get_logger
+except ImportError:
+    # Абсолютный импорт (когда запускается напрямую)
+    from src.config.env import get_settings
+    from src.integrations.cache import cleanup_cache
+    from src.integrations.yclients_adapter import get_yclients_adapter
+    from src.realtime.client import cleanup_realtime_client, get_realtime_client
+    from src.realtime.connection_pool import cleanup_connection_pool, get_connection_pool
+    from src.telegram.handlers import get_handlers_router
+    from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -230,7 +241,10 @@ class TelegramBotApp:
             while True:
                 try:
                     # Clean up throttler entries
-                    from .utils.throttler import get_message_throttler, get_rate_limiter
+                    try:
+                        from .utils.throttler import get_message_throttler, get_rate_limiter
+                    except ImportError:
+                        from src.utils.throttler import get_message_throttler, get_rate_limiter
                     throttler = get_message_throttler()
                     rate_limiter = get_rate_limiter()
                     

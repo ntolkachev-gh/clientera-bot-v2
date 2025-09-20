@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     TG_WEBHOOK_PATH: str = Field("/webhook", description="Webhook path")
     TG_WEBHOOK_PORT: int = Field(8080, description="Webhook server port")
     
+    # Notification Bot (для уведомлений о записях)
+    NOTIFICATION_BOT_TOKEN: Optional[str] = Field(None, description="Token for notification bot")
+    NOTIFICATION_CHAT_ID: Optional[str] = Field(None, description="Chat ID for notifications (can be channel, group or user)")
+    NOTIFICATION_CHAT_IDS: Optional[str] = Field(None, description="Multiple chat IDs separated by comma (channels, groups or users)")
+    
     # OpenAI Realtime API
     OPENAI_API_KEY: str = Field(..., description="OpenAI API key")
     REALTIME_MODEL: str = Field("gpt-4o-realtime-preview", description="Realtime model name")
@@ -42,6 +47,7 @@ class Settings(BaseSettings):
     # Application settings
     LOG_LEVEL: str = Field("INFO", description="Logging level")
     DEBUG: bool = Field(False, description="Debug mode")
+    DEMO: bool = Field(False, description="Demo mode with mock data")
     
     # Rate limiting
     RATE_LIMIT_REQUESTS: int = Field(5, description="Max requests per window")
