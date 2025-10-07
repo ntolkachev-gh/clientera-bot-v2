@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     DEBUG: bool = Field(False, description="Debug mode")
     DEMO: bool = Field(False, description="Demo mode with mock data")
     
+    # AI Assistant Configuration
+    SYSTEM_INSTRUCTIONS: Optional[str] = Field(None, description="System instructions for AI assistant")
+    
     # Rate limiting
     RATE_LIMIT_REQUESTS: int = Field(5, description="Max requests per window")
     RATE_LIMIT_WINDOW: int = Field(30, description="Rate limit window in seconds")
