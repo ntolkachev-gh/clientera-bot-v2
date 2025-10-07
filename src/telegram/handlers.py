@@ -10,6 +10,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
+from ..config.env import get_settings
 from ..integrations.yclients_adapter import get_yclients_adapter
 from ..realtime.client import get_realtime_client
 from ..realtime.connection_pool import get_connection_pool
@@ -23,6 +24,29 @@ router = Router()
 # Global instances
 throttler = get_message_throttler()
 rate_limiter = get_rate_limiter()
+
+
+def get_welcome_text(user_name: str) -> str:
+    """Get welcome text from config or use default."""
+    settings = get_settings()
+    
+    # Если задан кастомный текст приветствия, используем его
+    if settings.WELCOME_TEXT:
+        # Заменяем плейсхолдер {user_name} на реальное имя
+        return settings.WELCOME_TEXT.format(user_name=user_name)
+    
+    # Дефолтный текст для салона красоты Prive7
+    return f"""<b>Добро пожаловать 
+
+Привет, {user_name}! Я — ваш AI-ассистент. Помогу:
+
+📋 <b>Записаться на прием</b>
+💰 <b>Узнать цены на услуги</b>
+👨 <b>Выбрать сотрудника</b>
+📅 <b>Найти свободное время</b>
+📞 <b>Получить информацию</b>
+
+<i>Просто напишите, что вас интересует, и я помогу!</i>"""
 
 
 @router.message(CommandStart())
@@ -65,19 +89,7 @@ async def start_handler(message: Message) -> None:
         except Exception as e:
             logger.error(f"Error getting Telegram profile: {e}")
 
-    welcome_text = f"""<b>Добро пожаловать в салон Prive7 Makhachkala!</b>
-
-Привет, {user_name}! Я — ваш AI-ассистент. Помогу:
-
-📋 <b>Записаться на прием</b>
-💰 <b>Узнать цены на услуги</b>
-👨‍⚕️ <b>Выбрать мастера</b>
-📅 <b>Найти свободное время</b>
-🏥 <b>Получить информацию о салоне</b>
-
-<i>Просто напишите, что вас интересует, и я помогу!</i>
-"""
-
+    welcome_text = get_welcome_text(user_name)
     await message.answer(welcome_text, parse_mode="HTML")
 
 

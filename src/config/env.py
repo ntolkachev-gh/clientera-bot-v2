@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     
     # AI Assistant Configuration
     SYSTEM_INSTRUCTIONS: Optional[str] = Field(None, description="System instructions for AI assistant")
+    WELCOME_TEXT: Optional[str] = Field(None, description="Welcome message text for /start command")
     
     # Rate limiting
     RATE_LIMIT_REQUESTS: int = Field(5, description="Max requests per window")
