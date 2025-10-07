@@ -119,6 +119,19 @@ class Settings(BaseSettings):
             "OpenAI-Beta": "realtime=v1"
         }
     
+    def get_webhook_port(self) -> int:
+        """Get webhook port, preferring Railway's PORT env var."""
+        # Railway sets PORT env var automatically
+        railway_port = os.environ.get("PORT")
+        if railway_port:
+            try:
+                return int(railway_port)
+            except ValueError:
+                pass
+        
+        # Fallback to configured port
+        return self.TG_WEBHOOK_PORT
+
     def mask_sensitive_data(self) -> dict:
         """Get config dict with masked sensitive data for logging."""
         config = self.model_dump()

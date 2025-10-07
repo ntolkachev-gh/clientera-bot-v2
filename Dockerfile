@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Копируем исходный код
 COPY src/ ./src/
 COPY main.py ./
+COPY simple_health_server.py ./
 
 # Создаем пользователя для безопасности
 RUN useradd --create-home --shell /bin/bash app && \

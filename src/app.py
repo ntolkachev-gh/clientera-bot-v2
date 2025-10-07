@@ -228,7 +228,8 @@ class TelegramBotApp:
     
     async def start_webhook_server(self) -> None:
         """Start webhook server."""
-        logger.info(f"Starting webhook server on 0.0.0.0:{settings.TG_WEBHOOK_PORT}")
+        webhook_port = settings.get_webhook_port()
+        logger.info(f"Starting webhook server on 0.0.0.0:{webhook_port}")
         
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
@@ -236,11 +237,11 @@ class TelegramBotApp:
         self.site = web.TCPSite(
             self.runner,
             host="0.0.0.0",
-            port=settings.TG_WEBHOOK_PORT
+            port=webhook_port
         )
         
         await self.site.start()
-        logger.info(f"✅ Webhook server started successfully on port {settings.TG_WEBHOOK_PORT}")
+        logger.info(f"✅ Webhook server started successfully on port {webhook_port}")
         logger.info(f"Health endpoints available at:")
         logger.info(f"  - /ready (simple readiness check)")
         logger.info(f"  - /health (detailed health check)")
@@ -340,14 +341,15 @@ class TelegramBotApp:
         self.early_runner = web.AppRunner(early_app)
         await self.early_runner.setup()
         
+        webhook_port = settings.get_webhook_port()
         self.early_site = web.TCPSite(
             self.early_runner,
             host="0.0.0.0",
-            port=settings.TG_WEBHOOK_PORT
+            port=webhook_port
         )
         
         await self.early_site.start()
-        logger.info(f"🚀 Early health server started on port {settings.TG_WEBHOOK_PORT}")
+        logger.info(f"🚀 Early health server started on port {webhook_port} (Railway PORT: {os.environ.get('PORT', 'not_set')})")
 
     async def stop_early_health_server(self) -> None:
         """Stop early health server."""
@@ -366,6 +368,14 @@ class TelegramBotApp:
             
             logger.info("TBA_STU: Starting Telegram bot application...")
             logger.info(f"TBA_STU: Configuration: {settings.mask_sensitive_data()}")
+            
+            # Log environment diagnostics
+            webhook_port = settings.get_webhook_port()
+            logger.info(f"TBA_STU: Environment diagnostics:")
+            logger.info(f"  - Railway PORT: {os.environ.get('PORT', 'not_set')}")
+            logger.info(f"  - TG_WEBHOOK_PORT: {settings.TG_WEBHOOK_PORT}")
+            logger.info(f"  - Effective port: {webhook_port}")
+            logger.info(f"  - TG_WEBHOOK_URL: {settings.TG_WEBHOOK_URL}")
             
             # Start early health server for Railway health checks
             logger.info("TBA_STU: Starting early health server...")
@@ -411,9 +421,10 @@ class TelegramBotApp:
                 logger.info("TBA_STU: Setting up Telegram webhook...")
                 await self.setup_webhook()
                 
+                webhook_port = settings.get_webhook_port()
                 logger.info("TBA_STU: ✅ Bot started in webhook mode")
                 logger.info(f"TBA_STU: Webhook URL =  {settings.TG_WEBHOOK_URL}{settings.TG_WEBHOOK_PATH}")
-                logger.info(f"TBA_STU: Server listening on port {settings.TG_WEBHOOK_PORT}")
+                logger.info(f"TBA_STU: Server listening on port {webhook_port}")
             
             else:
                 # Development: polling mode
