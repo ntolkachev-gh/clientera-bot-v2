@@ -377,9 +377,8 @@ class TelegramBotApp:
             logger.info(f"  - Effective port: {webhook_port}")
             logger.info(f"  - TG_WEBHOOK_URL: {settings.TG_WEBHOOK_URL}")
             
-            # Start early health server for Railway health checks
-            logger.info("TBA_STU: Starting early health server...")
-            await self.start_early_health_server()
+            # Skip early health server - standalone server is already running
+            logger.info("TBA_STU: Standalone health server already running, skipping early server...")
             
             # Create bot and dispatcher
             logger.info("TBA_STU: Creating bot instance...")
@@ -407,8 +406,8 @@ class TelegramBotApp:
                 # Production: webhook mode
                 logger.info("TBA_STU: Setting up webhook mode...")
                 
-                # Stop early health server
-                await self.stop_early_health_server()
+                # Note: Standalone health server will be replaced by main server
+                # No need to stop it explicitly - it will be replaced on the same port
                 
                 # Create main web app (this starts the full health endpoint)
                 logger.info("TBA_STU: Creating main web application...")
@@ -509,9 +508,14 @@ async def lifespan_context():
         await app_instance.shutdown()
 
 
-async def run_webhook_mode():
+async def run_webhook_mode(standalone_runner, standalone_site):
     """Run bot in webhook mode."""
     async with lifespan_context() as app:
+        # Stop standalone health server before starting main app
+        if standalone_runner or standalone_site:
+            logger.info("TBA_STU: Stopping standalone health server to start main app...")
+            await stop_standalone_health_server(standalone_runner, standalone_site)
+        
         # Keep the application running
         try:
             while True:
@@ -541,13 +545,67 @@ def setup_signal_handlers():
     signal.signal(signal.SIGTERM, signal_handler)
 
 
+async def start_standalone_health_server():
+    """Start standalone health server that runs independently."""
+    if not settings.TG_WEBHOOK_URL:
+        return None, None  # Only needed in webhook mode
+        
+    from aiohttp import web
+    
+    # Create minimal app with just health endpoints
+    health_app = web.Application()
+    
+    async def standalone_ready_check(request):
+        return web.json_response({
+            "status": "ready",
+            "service": "telegram-bot",
+            "message": "Standalone health server running",
+            "main_app_status": "initializing"
+        })
+    
+    async def standalone_health_check(request):
+        return web.json_response({
+            "status": "healthy",
+            "service": "telegram-bot", 
+            "message": "Standalone health server healthy",
+            "main_app_status": "initializing"
+        })
+    
+    health_app.router.add_get("/ready", standalone_ready_check)
+    health_app.router.add_get("/health", standalone_health_check)
+    
+    # Start standalone server
+    webhook_port = settings.get_webhook_port()
+    runner = web.AppRunner(health_app)
+    await runner.setup()
+    
+    site = web.TCPSite(runner, "0.0.0.0", webhook_port)
+    await site.start()
+    
+    logger.info(f"🚀 Standalone health server started on port {webhook_port}")
+    return runner, site
+
+async def stop_standalone_health_server(runner, site):
+    """Stop standalone health server."""
+    if site:
+        await site.stop()
+        logger.info("Standalone health server stopped")
+    if runner:
+        await runner.cleanup()
+
 async def main():
     """Main application entry point."""
+    standalone_runner = None
+    standalone_site = None
+    
     try:
         setup_signal_handlers()
         
+        # Start standalone health server FIRST, before anything else
+        standalone_runner, standalone_site = await start_standalone_health_server()
+        
         if settings.TG_WEBHOOK_URL:
-            await run_webhook_mode()
+            await run_webhook_mode(standalone_runner, standalone_site)
         else:
             await run_polling_mode()
     
@@ -557,6 +615,11 @@ async def main():
     except Exception as e:
         logger.error(f"💥 Unexpected error: {e}")
         sys.exit(1)
+    
+    finally:
+        # Always cleanup standalone health server
+        if standalone_runner or standalone_site:
+            await stop_standalone_health_server(standalone_runner, standalone_site)
 
 
 if __name__ == "__main__":
