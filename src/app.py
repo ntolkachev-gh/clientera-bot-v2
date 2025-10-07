@@ -304,8 +304,9 @@ class TelegramBotApp:
                 except Exception as e:
                     logger.error(f"Error in background cleanup: {e}")
                 
-                # Run cleanup every 5 minutes
-                await asyncio.sleep(300)
+                # Run cleanup with configurable interval
+                cleanup_interval = settings.WS_CLEANUP_INTERVAL * 5  # 5x базовый интервал
+                await asyncio.sleep(cleanup_interval)
         
         asyncio.create_task(cleanup_task())
         logger.info("Background cleanup task started")

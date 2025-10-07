@@ -59,19 +59,33 @@ class Settings(BaseSettings):
     
     # Streaming settings
     STREAM_THROTTLE_MS: int = Field(300, description="Throttle between message edits in ms")
-    RESPONSE_TIMEOUT: int = Field(10, description="Timeout for first response delta in seconds")
+    RESPONSE_TIMEOUT: int = Field(15, description="Timeout for first response delta in seconds")
     MAX_RESPONSE_LENGTH: int = Field(1500, description="Max response length in characters")
     
-    # WebSocket settings
-    WS_CONNECT_TIMEOUT: int = Field(15, description="WebSocket connection timeout")
-    WS_PING_INTERVAL: int = Field(30, description="WebSocket ping interval")
-    WS_PING_TIMEOUT: int = Field(15, description="WebSocket ping timeout")
-    WS_MAX_RETRIES: int = Field(10, description="Max WebSocket reconnection attempts")
+    # WebSocket settings (улучшенные для стабильности)
+    WS_CONNECT_TIMEOUT: int = Field(30, description="WebSocket connection timeout")
+    WS_PING_INTERVAL: int = Field(45, description="WebSocket ping interval")
+    WS_PING_TIMEOUT: int = Field(20, description="WebSocket ping timeout")
+    WS_MAX_RETRIES: int = Field(15, description="Max WebSocket reconnection attempts")
     
-    # Connection pool settings
-    WS_POOL_SIZE: int = Field(3, description="Number of WebSocket connections in pool")
-    WS_MAX_USERS_PER_CONNECTION: int = Field(20, description="Max concurrent users per connection")
+    # Connection pool settings (оптимизированные)
+    WS_POOL_SIZE: int = Field(5, description="Number of WebSocket connections in pool")
+    WS_MAX_USERS_PER_CONNECTION: int = Field(15, description="Max concurrent users per connection")
     WS_POOL_STRATEGY: str = Field("least_connections", description="Load balancing strategy")
+    
+    # Дополнительные параметры стабильности
+    WS_HEALTH_CHECK_INTERVAL: int = Field(300, description="Health check interval in seconds")
+    WS_CLEANUP_INTERVAL: int = Field(60, description="Cleanup interval in seconds")
+    WS_MAX_RESPONSE_MONITOR_TIME: int = Field(30, description="Max response monitor time in seconds")
+    
+    # Circuit Breaker settings
+    WS_CB_FAILURE_THRESHOLD: int = Field(5, description="Circuit breaker failure threshold")
+    WS_CB_RECOVERY_TIMEOUT: int = Field(300, description="Circuit breaker recovery timeout in seconds")
+    
+    # Adaptive timeout settings
+    WS_ADAPTIVE_TIMEOUTS: bool = Field(True, description="Enable adaptive timeouts")
+    WS_BASE_PING_TIMEOUT: int = Field(15, description="Base ping timeout in seconds")
+    WS_MAX_PING_TIMEOUT: int = Field(60, description="Maximum ping timeout in seconds")
     
     @field_validator("LOG_LEVEL")
     @classmethod

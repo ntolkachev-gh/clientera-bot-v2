@@ -62,37 +62,69 @@ class OpenAIRealtimeClient:
         self._created_at = datetime.utcnow()
         self._reconnecting = False  # Prevent multiple reconnection tasks
         self._last_reconnect_time: Optional[datetime] = None
+        
+        # Улучшенная система стабильности
+        self._connection_id = f"client_{user_id}_{id(self)}"
+        self._response_monitor_tasks: Dict[str, asyncio.Task] = {}  # Отслеживание задач мониторинга
         self._consecutive_failures = 0
         self._circuit_breaker_open = False
         self._circuit_breaker_open_time: Optional[datetime] = None
         
-        logger.info(f"🔗 Created dedicated OpenAI client for user {user_id}")
+        logger.info(f"🔗 Created dedicated OpenAI client for user {user_id} with improved stability")
         
     async def connect(self) -> None:
-        """Connect to OpenAI Realtime API."""
+        """Connect to OpenAI Realtime API with improved stability."""
         if self.is_connected and self.websocket and not self.websocket.closed:
             logger.debug("Already connected to Realtime API")
             return
             
+        # Проверяем circuit breaker
+        if self._circuit_breaker_open:
+            if self._circuit_breaker_open_time:
+                time_since_open = (datetime.utcnow() - self._circuit_breaker_open_time).total_seconds()
+                if time_since_open < settings.WS_CB_RECOVERY_TIMEOUT:
+                    remaining_time = settings.WS_CB_RECOVERY_TIMEOUT - time_since_open
+                    raise Exception(f"Connection circuit breaker is open (will retry in {remaining_time:.0f}s)")
+                else:
+                    # Пробуем закрыть circuit breaker
+                    self._circuit_breaker_open = False
+                    self._consecutive_failures = 0
+                    logger.info("🔧 Circuit breaker closed, attempting reconnection")
+            
         try:
             logger.info(f"Connecting to OpenAI Realtime API... (attempt {self._reconnect_attempts + 1})")
+            start_time = datetime.utcnow()
             
             # Cancel existing tasks
             await self._cleanup_tasks()
+            
+            # Используем адаптивный таймаут на основе предыдущих неудач
+            if settings.WS_ADAPTIVE_TIMEOUTS:
+                adaptive_timeout = min(
+                    settings.WS_BASE_PING_TIMEOUT * (1 + self._consecutive_failures * 0.2), 
+                    settings.WS_MAX_PING_TIMEOUT
+                )
+            else:
+                adaptive_timeout = settings.WS_PING_TIMEOUT
             
             self.websocket = await websockets.connect(
                 settings.get_realtime_ws_url(),
                 extra_headers=settings.get_realtime_headers(),
                 ping_interval=settings.WS_PING_INTERVAL,
-                ping_timeout=settings.WS_PING_TIMEOUT,
+                ping_timeout=int(adaptive_timeout),
                 close_timeout=settings.WS_CONNECT_TIMEOUT,
                 max_size=2**20,  # 1MB max message size
                 compression=None,  # Disable compression for better performance
             )
             
+            connection_time = (datetime.utcnow() - start_time).total_seconds()
+            
             self.is_connected = True
             self._reconnect_attempts = 0
-            logger.info("Connected to OpenAI Realtime API")
+            self._consecutive_failures = 0
+            self._circuit_breaker_open = False
+            
+            logger.info(f"Connected to OpenAI Realtime API in {connection_time:.2f}s")
             
             # Initialize session
             await self._initialize_session()
@@ -107,15 +139,20 @@ class OpenAIRealtimeClient:
             logger.error(f"Failed to connect to Realtime API: {e}")
             self.is_connected = False
             self._reconnect_attempts += 1
+            self._consecutive_failures += 1
+            
+            # Открываем circuit breaker при множественных неудачах
+            if self._consecutive_failures >= settings.WS_CB_FAILURE_THRESHOLD:
+                self._circuit_breaker_open = True
+                self._circuit_breaker_open_time = datetime.utcnow()
+                logger.warning(f"🚫 Circuit breaker opened after {self._consecutive_failures} consecutive failures")
+            
             raise
     
     async def disconnect(self) -> None:
-        """Disconnect from OpenAI Realtime API."""
+        """Disconnect from OpenAI Realtime API with improved cleanup."""
         self._should_reconnect = False
         self._reconnecting = False  # Reset reconnection flag
-        self._circuit_breaker_open = False  # Reset circuit breaker
-        self._circuit_breaker_open_time = None
-        self._consecutive_failures = 0
         
         if self.websocket and not self.websocket.closed:
             logger.info("Disconnecting from OpenAI Realtime API...")
@@ -124,11 +161,34 @@ class OpenAIRealtimeClient:
             except Exception as e:
                 logger.warning(f"Error closing WebSocket: {e}")
         
+        # Очищаем все задачи и ресурсы
         await self._cleanup_tasks()
+        await self._cleanup_response_monitors()
         
         self.is_connected = False
         self.active_streams.clear()
         self.pending_function_calls.clear()
+        
+        logger.info(f"🔌 Disconnected OpenAI client for user {self.user_id}")
+    
+    def _cleanup_on_delete(self):
+        """Вызывается при удалении объекта сборщиком мусора."""
+        logger.debug(f"Cleanup callback for client {self._connection_id}")
+        # Здесь можно добавить дополнительную очистку ресурсов
+    
+    async def _cleanup_response_monitors(self):
+        """Очищает все задачи мониторинга response."""
+        if self._response_monitor_tasks:
+            tasks_to_cancel = list(self._response_monitor_tasks.values())
+            for task in tasks_to_cancel:
+                if not task.done():
+                    task.cancel()
+            
+            if tasks_to_cancel:
+                await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+            
+            self._response_monitor_tasks.clear()
+            logger.debug(f"Cancelled {len(tasks_to_cancel)} response monitor tasks")
         
     async def _cleanup_tasks(self) -> None:
         """Clean up background tasks."""
@@ -653,8 +713,9 @@ class OpenAIRealtimeClient:
         if not stream_updated:
             logger.warning(f"⚠️ Не найден активный стрим для response_id {response_id}")
             
-        # Запускаем задачу мониторинга зависшего response
-        asyncio.create_task(self._monitor_response_timeout(response_id))
+        # Запускаем задачу мониторинга зависшего response с отслеживанием
+        monitor_task = asyncio.create_task(self._monitor_response_timeout(response_id))
+        self._response_monitor_tasks[response_id] = monitor_task
     
     async def _handle_error(self, event_data: Dict[str, Any]) -> None:
         """Handle error event."""
@@ -692,53 +753,62 @@ class OpenAIRealtimeClient:
     
     async def _monitor_response_timeout(self, response_id: str) -> None:
         """Monitor response for timeout and cancel if hanging."""
-        # Ждем 20 секунд - если за это время нет никакого ответа, отменяем
-        await asyncio.sleep(20)
-        
-        # Ищем стрим по response_id
-        stream = self._find_stream_by_response_id(response_id)
-        if not stream:
-            return
+        try:
+            # Ждем настраиваемое время - если за это время нет никакого ответа, отменяем
+            await asyncio.sleep(settings.WS_MAX_RESPONSE_MONITOR_TIME)
             
-        # Проверяем, не получили ли мы уже какой-то текст
-        if stream.accumulated_text.strip():
-            logger.debug(f"Response {response_id} уже получил текст, мониторинг не нужен")
-            return
-            
-        # Проверяем, не завершен ли уже стрим
-        if stream.state in [StreamState.DONE, StreamState.ERROR, StreamState.CANCELLED]:
-            return
-            
-        # Проверяем таймстамп создания response
-        if hasattr(stream, 'response_created_at'):
-            time_elapsed = (datetime.utcnow() - stream.response_created_at).total_seconds()
-            if time_elapsed > 20:
-                logger.warning(f"⏰ Response {response_id} завис более 20 секунд без ответа, отменяем")
+            # Ищем стрим по response_id
+            stream = self._find_stream_by_response_id(response_id)
+            if not stream:
+                return
                 
-                try:
-                    # Отменяем зависший response
-                    cancel_event = {"type": "response.cancel"}
-                    await self._send_event(cancel_event)
-                    logger.info(f"❌ Отменен зависший response {response_id}")
+            # Проверяем, не получили ли мы уже какой-то текст
+            if stream.accumulated_text.strip():
+                logger.debug(f"Response {response_id} уже получил текст, мониторинг не нужен")
+                return
+                
+            # Проверяем, не завершен ли уже стрим
+            if stream.state in [StreamState.DONE, StreamState.ERROR, StreamState.CANCELLED]:
+                return
+                
+            # Проверяем таймстамп создания response
+            if hasattr(stream, 'response_created_at'):
+                time_elapsed = (datetime.utcnow() - stream.response_created_at).total_seconds()
+                if time_elapsed > settings.WS_MAX_RESPONSE_MONITOR_TIME:
+                    logger.warning(f"⏰ Response {response_id} завис более {settings.WS_MAX_RESPONSE_MONITOR_TIME} секунд без ответа, отменяем")
                     
-                    # Ждем немного и пробуем создать новый
-                    await asyncio.sleep(1)
-                    
-                    # Создаем новый response только если стрим все еще активен
-                    if stream.state not in [StreamState.DONE, StreamState.ERROR, StreamState.CANCELLED]:
-                        response_event = {
-                            "type": "response.create",
-                            "response": {
-                                "modalities": ["text"],
-                                "temperature": 1.0,  # Немного снижаем температуру для стабильности
-                                "max_output_tokens": 1500
-                            }
-                        }
-                        await self._send_event(response_event)
-                        logger.info(f"🔄 Создан новый response взамен зависшего {response_id}")
+                    try:
+                        # Отменяем зависший response
+                        cancel_event = {"type": "response.cancel"}
+                        await self._send_event(cancel_event)
+                        logger.info(f"❌ Отменен зависший response {response_id}")
                         
-                except Exception as e:
-                    logger.error(f"Ошибка при отмене зависшего response {response_id}: {e}")
+                        # Ждем немного и пробуем создать новый
+                        await asyncio.sleep(1)
+                        
+                        # Создаем новый response только если стрим все еще активен
+                        if stream.state not in [StreamState.DONE, StreamState.ERROR, StreamState.CANCELLED]:
+                            response_event = {
+                                "type": "response.create",
+                                "response": {
+                                    "modalities": ["text"],
+                                    "temperature": 1.0,  # Немного снижаем температуру для стабильности
+                                    "max_output_tokens": 1500
+                                }
+                            }
+                            await self._send_event(response_event)
+                            logger.info(f"🔄 Создан новый response взамен зависшего {response_id}")
+                            
+                    except Exception as e:
+                        logger.error(f"Ошибка при отмене зависшего response {response_id}: {e}")
+        
+        except asyncio.CancelledError:
+            logger.debug(f"Response monitor for {response_id} cancelled")
+        except Exception as e:
+            logger.error(f"Ошибка в мониторинге response {response_id}: {e}")
+        finally:
+            # Очищаем задачу из словаря
+            self._response_monitor_tasks.pop(response_id, None)
     
     async def ensure_connected(self) -> None:
         """Ensure WebSocket is connected, reconnect if needed."""
@@ -942,14 +1012,15 @@ class RealtimeClientManager:
                     except Exception as e:
                         logger.error(f"Error cleaning up client for user {user_id}: {e}")
                 
-                # Спим 30 минут до следующей проверки
-                await asyncio.sleep(1800)
+                # Спим настраиваемое время до следующей проверки (по умолчанию 30 минут)
+                cleanup_interval = settings.WS_CLEANUP_INTERVAL * 30  # 30x базовый интервал
+                await asyncio.sleep(cleanup_interval)
                 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in cleanup task: {e}")
-                await asyncio.sleep(300)  # При ошибке ждем 5 минут
+                await asyncio.sleep(settings.WS_CLEANUP_INTERVAL * 5)  # При ошибке ждем 5x базовый интервал
     
     async def get_client_for_user(self, user_id: int) -> OpenAIRealtimeClient:
         """Получает или создает клиент для конкретного пользователя."""
@@ -1022,13 +1093,26 @@ async def get_realtime_client(yclients_adapter: YClientsAdapter, user_id: int = 
 
 
 async def cleanup_realtime_client() -> None:
-    """Cleanup all Realtime clients."""
+    """Cleanup all Realtime clients with improved stability."""
     global _client_manager
     
     if _client_manager:
         logger.info("Cleaning up all Realtime clients...")
-        await _client_manager.cleanup_all()
-        _client_manager = None
+        try:
+            await _client_manager.cleanup_all()
+        except Exception as e:
+            logger.error(f"Error during client manager cleanup: {e}")
+        finally:
+            _client_manager = None
+    
+    # Дополнительная очистка глобальных ресурсов
+    try:
+        # Принудительная сборка мусора для освобождения памяти
+        import gc
+        gc.collect()
+        logger.info("🧹 Performed garbage collection")
+    except Exception as e:
+        logger.error(f"Error during graceful shutdown: {e}")
 
 
 async def restart_realtime_client(yclients_adapter: YClientsAdapter, user_id: int = 0) -> OpenAIRealtimeClient:
