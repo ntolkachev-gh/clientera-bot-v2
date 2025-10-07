@@ -508,14 +508,10 @@ async def lifespan_context():
         await app_instance.shutdown()
 
 
-async def run_webhook_mode(standalone_runner, standalone_site):
+async def run_webhook_mode():
     """Run bot in webhook mode."""
     async with lifespan_context() as app:
-        # Stop standalone health server before starting main app
-        if standalone_runner or standalone_site:
-            logger.info("TBA_STU: Stopping standalone health server to start main app...")
-            await stop_standalone_health_server(standalone_runner, standalone_site)
-        
+        # Health server is handled in main.py
         # Keep the application running
         try:
             while True:
@@ -601,11 +597,9 @@ async def main():
     try:
         setup_signal_handlers()
         
-        # Start standalone health server FIRST, before anything else
-        standalone_runner, standalone_site = await start_standalone_health_server()
-        
+        # Health server is handled in main.py, no need for standalone server here
         if settings.TG_WEBHOOK_URL:
-            await run_webhook_mode(standalone_runner, standalone_site)
+            await run_webhook_mode()
         else:
             await run_polling_mode()
     
