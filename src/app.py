@@ -215,7 +215,7 @@ class TelegramBotApp:
             return web.json_response({
                 "status": "ready",
                 "service": "telegram-bot",
-                "message": "Service is ready to accept requests"
+                "message": "Service is fully initialized and ready to accept requests"
             })
         
         app.router.add_get("/ready", readiness_check)
@@ -309,49 +309,130 @@ class TelegramBotApp:
         asyncio.create_task(cleanup_task())
         logger.info("Background cleanup task started")
     
+    async def start_early_health_server(self) -> None:
+        """Start a simple health server early in the startup process."""
+        if not settings.TG_WEBHOOK_URL:
+            return  # Only needed in webhook mode
+            
+        from aiohttp import web
+        
+        # Create minimal app with just health endpoints
+        early_app = web.Application()
+        
+        async def early_ready_check(request):
+            return web.json_response({
+                "status": "starting",
+                "service": "telegram-bot",
+                "message": "Service is starting up"
+            })
+        
+        async def early_health_check(request):
+            return web.json_response({
+                "status": "initializing",
+                "service": "telegram-bot",
+                "message": "Service is initializing"
+            })
+        
+        early_app.router.add_get("/ready", early_ready_check)
+        early_app.router.add_get("/health", early_health_check)
+        
+        # Start early server
+        self.early_runner = web.AppRunner(early_app)
+        await self.early_runner.setup()
+        
+        self.early_site = web.TCPSite(
+            self.early_runner,
+            host="0.0.0.0",
+            port=settings.TG_WEBHOOK_PORT
+        )
+        
+        await self.early_site.start()
+        logger.info(f"🚀 Early health server started on port {settings.TG_WEBHOOK_PORT}")
+
+    async def stop_early_health_server(self) -> None:
+        """Stop early health server."""
+        if hasattr(self, 'early_site') and self.early_site:
+            await self.early_site.stop()
+            logger.info("Early health server stopped")
+        
+        if hasattr(self, 'early_runner') and self.early_runner:
+            await self.early_runner.cleanup()
+
     async def startup(self) -> None:
         """Application startup."""
-        # Acquire process lock first
-        self.acquire_process_lock()
-        
-        logger.info("TBA_STU: Starting Telegram bot application...")
-        logger.info(f"TBA_STU: Configuration: {settings.mask_sensitive_data()}")
-        
-        # Create bot and dispatcher
-        self.bot = await self.create_bot()
-        self.dp = await self.create_dispatcher()
-        
-        # Initialize Realtime client
-        await self.initialize_realtime_client()
-        
-        # Start background tasks
-        await self.cleanup_background_tasks()
+        try:
+            # Acquire process lock first
+            self.acquire_process_lock()
+            
+            logger.info("TBA_STU: Starting Telegram bot application...")
+            logger.info(f"TBA_STU: Configuration: {settings.mask_sensitive_data()}")
+            
+            # Start early health server for Railway health checks
+            logger.info("TBA_STU: Starting early health server...")
+            await self.start_early_health_server()
+            
+            # Create bot and dispatcher
+            logger.info("TBA_STU: Creating bot instance...")
+            self.bot = await self.create_bot()
+            logger.info("TBA_STU: Creating dispatcher...")
+            self.dp = await self.create_dispatcher()
+            
+            # Initialize Realtime client
+            logger.info("TBA_STU: Initializing Realtime client...")
+            await self.initialize_realtime_client()
+            
+            # Start background tasks
+            logger.info("TBA_STU: Starting background tasks...")
+            await self.cleanup_background_tasks()
+            
+        except Exception as e:
+            logger.error(f"TBA_STU: Failed during startup initialization: {e}")
+            # Make sure early health server is stopped on error
+            await self.stop_early_health_server()
+            raise
         
         # Set up webhook or polling based on configuration
-        if settings.TG_WEBHOOK_URL:
-            # Production: webhook mode
-            # First create web app (this starts the health endpoint)
-            self.app = await self.create_web_app()
-            await self.start_webhook_server()
+        try:
+            if settings.TG_WEBHOOK_URL:
+                # Production: webhook mode
+                logger.info("TBA_STU: Setting up webhook mode...")
+                
+                # Stop early health server
+                await self.stop_early_health_server()
+                
+                # Create main web app (this starts the full health endpoint)
+                logger.info("TBA_STU: Creating main web application...")
+                self.app = await self.create_web_app()
+                
+                logger.info("TBA_STU: Starting main webhook server...")
+                await self.start_webhook_server()
+                
+                # Then set up webhook (this requires the server to be running)
+                logger.info("TBA_STU: Setting up Telegram webhook...")
+                await self.setup_webhook()
+                
+                logger.info("TBA_STU: ✅ Bot started in webhook mode")
+                logger.info(f"TBA_STU: Webhook URL =  {settings.TG_WEBHOOK_URL}{settings.TG_WEBHOOK_PATH}")
+                logger.info(f"TBA_STU: Server listening on port {settings.TG_WEBHOOK_PORT}")
             
-            # Then set up webhook (this requires the server to be running)
-            await self.setup_webhook()
-            
-            logger.info("TBA_STU: Bot started in webhook mode")
-            logger.info(f"TBA_STU: Webhook URL =  {settings.TG_WEBHOOK_URL}{settings.TG_WEBHOOK_PATH}")
-            logger.info(f"TBA_STU: Server listening on port {settings.TG_WEBHOOK_PORT}")
-        
-        else:
-            # Development: polling mode
-            logger.info("TBA_STU: Bot started in polling mode")
-            logger.info("TBA_STU: Using long polling for development")
-            
-            # Start polling
-            await self.dp.start_polling(
-                self.bot,
-                skip_updates=True,
-                allowed_updates=["message", "callback_query"]
-            )
+            else:
+                # Development: polling mode
+                logger.info("TBA_STU: Bot started in polling mode")
+                logger.info("TBA_STU: Using long polling for development")
+                
+                # Start polling
+                await self.dp.start_polling(
+                    self.bot,
+                    skip_updates=True,
+                    allowed_updates=["message", "callback_query"]
+                )
+                
+        except Exception as e:
+            logger.error(f"TBA_STU: Failed during webhook/polling setup: {e}")
+            # Make sure servers are stopped on error
+            await self.stop_webhook_server()
+            await self.stop_early_health_server()
+            raise
     
     async def shutdown(self) -> None:
         """Application shutdown."""
@@ -364,6 +445,9 @@ class TelegramBotApp:
         
         # Stop webhook server
         await self.stop_webhook_server()
+        
+        # Stop early health server if still running
+        await self.stop_early_health_server()
         
         # Close bot session
         if self.bot:
