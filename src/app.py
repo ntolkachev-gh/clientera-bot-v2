@@ -177,15 +177,48 @@ class TelegramBotApp:
         
         # Health check endpoint
         async def health_check(request):
-            return web.json_response({
-                "status": "healthy",
-                "bot_info": {
-                    "id": self.bot.id,
-                    "username": (await self.bot.get_me()).username
+            try:
+                # Basic health check - just return that the service is running
+                health_data = {
+                    "status": "healthy",
+                    "service": "telegram-bot",
+                    "timestamp": asyncio.get_event_loop().time()
                 }
-            })
+                
+                # Try to get bot info if bot is available, but don't fail if it's not
+                if self.bot:
+                    try:
+                        bot_me = await self.bot.get_me()
+                        health_data["bot_info"] = {
+                            "id": self.bot.id,
+                            "username": bot_me.username,
+                            "first_name": bot_me.first_name
+                        }
+                    except Exception as e:
+                        # Log the error but don't fail the health check
+                        logger.warning(f"Could not get bot info for health check: {e}")
+                        health_data["bot_info"] = {"status": "unavailable", "error": str(e)}
+                
+                return web.json_response(health_data)
+                
+            except Exception as e:
+                logger.error(f"Health check failed: {e}")
+                return web.json_response({
+                    "status": "unhealthy",
+                    "error": str(e)
+                }, status=503)
         
         app.router.add_get("/health", health_check)
+        
+        # Add a simple readiness check that doesn't depend on bot initialization
+        async def readiness_check(request):
+            return web.json_response({
+                "status": "ready",
+                "service": "telegram-bot",
+                "message": "Service is ready to accept requests"
+            })
+        
+        app.router.add_get("/ready", readiness_check)
         
         # Setup application
         setup_application(app, self.dp, bot=self.bot)
@@ -195,6 +228,8 @@ class TelegramBotApp:
     
     async def start_webhook_server(self) -> None:
         """Start webhook server."""
+        logger.info(f"Starting webhook server on 0.0.0.0:{settings.TG_WEBHOOK_PORT}")
+        
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
         
@@ -205,7 +240,10 @@ class TelegramBotApp:
         )
         
         await self.site.start()
-        logger.info(f"Webhook server started on port {settings.TG_WEBHOOK_PORT}")
+        logger.info(f"✅ Webhook server started successfully on port {settings.TG_WEBHOOK_PORT}")
+        logger.info(f"Health endpoints available at:")
+        logger.info(f"  - /ready (simple readiness check)")
+        logger.info(f"  - /health (detailed health check)")
     
     async def stop_webhook_server(self) -> None:
         """Stop webhook server."""
@@ -292,9 +330,12 @@ class TelegramBotApp:
         # Set up webhook or polling based on configuration
         if settings.TG_WEBHOOK_URL:
             # Production: webhook mode
-            await self.setup_webhook()
+            # First create web app (this starts the health endpoint)
             self.app = await self.create_web_app()
             await self.start_webhook_server()
+            
+            # Then set up webhook (this requires the server to be running)
+            await self.setup_webhook()
             
             logger.info("TBA_STU: Bot started in webhook mode")
             logger.info(f"TBA_STU: Webhook URL =  {settings.TG_WEBHOOK_URL}{settings.TG_WEBHOOK_PATH}")

@@ -30,8 +30,8 @@ USER app
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Открываем порт для webhook
-EXPOSE 8000
+# Открываем порт для webhook (по умолчанию 8080)
+EXPOSE 8080
 
 # Команда запуска
 CMD ["python3", "main.py"]
