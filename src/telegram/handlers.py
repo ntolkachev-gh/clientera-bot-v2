@@ -32,8 +32,10 @@ def get_welcome_text(user_name: str) -> str:
     
     # Если задан кастомный текст приветствия, используем его
     if settings.WELCOME_TEXT:
+        # Заменяем экранированные символы на реальные переносы строк
+        welcome_text = settings.WELCOME_TEXT.replace('\\n', '\n')
         # Заменяем плейсхолдер {user_name} на реальное имя
-        return settings.WELCOME_TEXT.format(user_name=user_name)
+        return welcome_text.format(user_name=user_name)
     
     # Дефолтный текст для салона красоты Prive7
     return f"""<b>Добро пожаловать 
