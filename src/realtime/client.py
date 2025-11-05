@@ -602,7 +602,9 @@ class OpenAIRealtimeClient:
             "yclients_list_services": self.yclients_adapter.list_services,
             "yclients_search_slots": self.yclients_adapter.search_slots,
             "yclients_create_appointment": self.yclients_adapter.yclients_create_appointment,
-            "yclients_list_doctors": self.yclients_adapter.list_doctors,
+            # Masters listing (new name) and backward-compatible alias
+            "yclients_list_masters": self.yclients_adapter.list_masters,
+            "yclients_list_doctors": self.yclients_adapter.list_masters,
             "get_user_info": self.yclients_adapter.get_user_info,
             "register_user": self.yclients_adapter.register_user,
             "book_appointment_with_profile": self.yclients_adapter.book_appointment_with_profile,

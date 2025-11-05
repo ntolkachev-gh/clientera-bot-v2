@@ -14,228 +14,7 @@ from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Моковые данные для демо-режима
-
-# Моковые услуги салона красоты Prive7 Makhachkala
-MOCK_SERVICES = [
-    # Парикмахерские услуги / стрижки и укладки
-    {
-        "id": 1,
-        "name": "Детская стрижка до 12 лет",
-        "category": "парикмахерские услуги",
-        "price": 2500,
-        "duration": 30,
-        "description": "Детская стрижка для детей до 12 лет"
-    },
-    {
-        "id": 2,
-        "name": "Стрижка челки",
-        "category": "парикмахерские услуги",
-        "price": 1000,
-        "duration": 15,
-        "description": "Стрижка и оформление челки"
-    },
-    {
-        "id": 3,
-        "name": "Женская стрижка",
-        "category": "парикмахерские услуги",
-        "price": 4500,
-        "duration": 60,
-        "description": "Женская стрижка любой сложности"
-    },
-
-    # Уходы для волос
-    {
-        "id": 4,
-        "name": "ORIBE \"Роскошь Золота\" короткие волосы",
-        "category": "уходы для волос",
-        "price": 4000,
-        "duration": 45,
-        "description": "Премиальный уход ORIBE для коротких волос"
-    },
-    {
-        "id": 5,
-        "name": "ORIBE \"Роскошь Золота\" длинные волосы",
-        "category": "уходы для волос",
-        "price": 5600,
-        "duration": 60,
-        "description": "Премиальный уход ORIBE для длинных волос"
-    },
-    {
-        "id": 6,
-        "name": "Philip Martins экспресс увлажнение средняя длина",
-        "category": "уходы для волос",
-        "price": 2500,
-        "duration": 30,
-        "description": "Экспресс-уход Philip Martins для увлажнения волос средней длины"
-    },
-
-    # Окрашивания / тонирования / осветление
-    {
-        "id": 7,
-        "name": "KYDRA base окрашивание корней и тонирование + уход, 30 см",
-        "category": "окрашивание",
-        "price": 10500,
-        "duration": 180,
-        "description": "Профессиональное окрашивание корней KYDRA с тонированием и уходом"
-    },
-    {
-        "id": 8,
-        "name": "KYDRA base — 30-50 см (80гр)",
-        "category": "окрашивание",
-        "price": 11700,
-        "duration": 210,
-        "description": "Окрашивание KYDRA для волос средней длины"
-    },
-    {
-        "id": 9,
-        "name": "KYDRA base — 50+ см (120гр)",
-        "category": "окрашивание",
-        "price": 15500,
-        "duration": 240,
-        "description": "Окрашивание KYDRA для длинных волос"
-    },
-
-    # Маникюр и педикюр
-    {
-        "id": 10,
-        "name": "Маникюр классический",
-        "category": "маникюр",
-        "price": 1500,
-        "duration": 60,
-        "description": "Классический маникюр с покрытием лаком"
-    },
-    {
-        "id": 11,
-        "name": "Маникюр с гель-лаком",
-        "category": "маникюр",
-        "price": 2500,
-        "duration": 90,
-        "description": "Маникюр с покрытием гель-лаком (стойкость до 3 недель)"
-    },
-    {
-        "id": 12,
-        "name": "Французский маникюр",
-        "category": "маникюр",
-        "price": 3000,
-        "duration": 90,
-        "description": "Классический французский маникюр"
-    },
-    {
-        "id": 13,
-        "name": "Педикюр классический",
-        "category": "педикюр",
-        "price": 2000,
-        "duration": 90,
-        "description": "Классический педикюр с покрытием лаком"
-    },
-    {
-        "id": 14,
-        "name": "Педикюр с гель-лаком",
-        "category": "педикюр",
-        "price": 3000,
-        "duration": 120,
-        "description": "Педикюр с покрытием гель-лаком"
-    },
-    {
-        "id": 15,
-        "name": "SPA-маникюр",
-        "category": "маникюр",
-        "price": 3500,
-        "duration": 120,
-        "description": "SPA-маникюр с уходом и массажем рук"
-    },
-
-    # Косметология
-    {
-        "id": 16,
-        "name": "Чистка лица",
-        "category": "косметология",
-        "price": 4000,
-        "duration": 90,
-        "description": "Профессиональная чистка лица"
-    },
-    {
-        "id": 17,
-        "name": "Массаж лица",
-        "category": "косметология",
-        "price": 2500,
-        "duration": 60,
-        "description": "Расслабляющий массаж лица"
-    },
-    {
-        "id": 18,
-        "name": "Макияж дневной",
-        "category": "визаж",
-        "price": 2000,
-        "duration": 60,
-        "description": "Дневной макияж для повседневного образа"
-    },
-    {
-        "id": 19,
-        "name": "Макияж вечерний",
-        "category": "визаж",
-        "price": 3000,
-        "duration": 90,
-        "description": "Вечерний макияж для особых случаев"
-    },
-    {
-        "id": 20,
-        "name": "Свадебный макияж",
-        "category": "визаж",
-        "price": 5000,
-        "duration": 120,
-        "description": "Свадебный макияж с пробой"
-    }
-]
-
-MOCK_MASTERS = [
-    {
-        "id": 1,
-        "name": "Саша Омарова",
-        "specialization": "Визажист Prive7",
-        "specializations": ["визаж", "макияж"],
-        "services": ["макияж", "визаж", "свадебный макияж", "вечерний макияж"],
-        "instagram": "отменена как \"визажист Prive7\"",
-        "description": "Профессиональный визажист с опытом работы более 5 лет",
-        "rating": 4.9,
-        "avatar": None
-    },
-    {
-        "id": 2,
-        "name": "Юлия Кадырова",
-        "specialization": "Hair (парикмахер, стилист)",
-        "specializations": ["парикмахер", "стилист", "колорист"],
-        "services": ["стрижка", "укладка", "окрашивание", "мелирование", "ботокс волос"],
-        "instagram": "В одном из постов: \"Hair: Юлия Кадырова\"",
-        "description": "Мастер-стилист по волосам, специалист по сложным окрашиваниям",
-        "rating": 4.8,
-        "avatar": None
-    },
-    {
-        "id": 3,
-        "name": "Екатерина Гриценко",
-        "specialization": "Стилист / парикмахер",
-        "specializations": ["стилист", "парикмахер"],
-        "services": ["стрижка", "укладка", "прически", "кератиновое выпрямление"],
-        "instagram": "В одном из образов: \"Hair: Екатерина Гриценко\"",
-        "description": "Стилист-парикмахер, специалист по созданию стильных образов",
-        "rating": 4.7,
-        "avatar": None
-    },
-    {
-        "id": 4,
-        "name": "Амина Магомедова",
-        "specialization": "Ногтевой сервис (маникюр, педикюр)",
-        "specializations": ["маникюр", "педикюр", "дизайн ногтей", "наращивание ногтей"],
-        "services": ["классический маникюр", "аппаратный маникюр", "гель-лак", "педикюр", "дизайн ногтей",
-                     "наращивание"],
-        "instagram": "В профиле указано: \"Nails: Амина Магомедова\"",
-        "description": "Мастер ногтевого сервиса с опытом работы более 4 лет, специализируется на дизайне и уходе за ногтями",
-        "rating": 4.9,
-        "avatar": None
-    }
-]
+# DEMO режим удален. Все методы используют реальные вызовы YClients API.
 
 
 class YClientsAdapter:
@@ -245,11 +24,8 @@ class YClientsAdapter:
         """Инициализация адаптера."""
         self.settings = get_settings()
 
-        # В демо-режиме не инициализируем реальный сервис
-        if not self.settings.DEMO:
-            self.service = get_yclients_service()
-        else:
-            self.service = None
+        # Всегда инициализируем реальный сервис YClients
+        self.service = get_yclients_service()
 
         self.profile_manager = get_profile_manager()
         self.notification_service = get_notification_service()
@@ -260,30 +36,6 @@ class YClientsAdapter:
     async def list_services(self, category: str = "все", limit: int = 50) -> List[Dict[str, Any]]:
         """Получить список услуг."""
         try:
-            # В демо-режиме используем моковые данные
-            if self.settings.DEMO:
-                logger.info("Using mock data for services list (DEMO mode)")
-                services = MOCK_SERVICES.copy()
-
-                # Фильтруем по категории если указана
-                if category and category != "все":
-                    filtered_services = []
-                    for service in services:
-                        # Проверяем соответствие категории
-                        service_category = service.get('category', '').lower()
-                        if (category.lower() in service_category or
-                                service_category in category.lower() or
-                                category.lower() == service_category):
-                            filtered_services.append(service)
-                    services = filtered_services
-
-                # Применяем лимит если указан
-                if limit and limit > 0:
-                    services = services[:limit]
-
-                logger.info(f"Retrieved {len(services)} services (DEMO mode, category: {category}, limit: {limit})")
-                return services
-
             result = await self.service.get_services(category)
             services = result.get('services', [])
 
@@ -299,60 +51,30 @@ class YClientsAdapter:
 
     async def search_slots(
             self,
-            doctor_id: int,
-            date: str
+            doctor_id: int = None,
+            date: str = None,
+            master_id: int = None
     ) -> List[Dict[str, Any]]:
         """Найти свободные слоты для записи на услугу для конкретного врача на конкретную дату."""
         try:
-            logger.info(f"YA_SSL: Searching slots for doctor_id={doctor_id}, date={date}")
-
-            # В демо-режиме генерируем слоты
-            if self.settings.DEMO:
-                logger.info("YA_SSL: Using mock data for slots (DEMO mode)")
-
-                # Получаем имя врача из моковых данных
-                doctor_name = None
-                for master in MOCK_MASTERS:
-                    if master.get('id') == doctor_id:
-                        doctor_name = master.get('name', f'Master {doctor_id}')
-                        break
-
-                if not doctor_name:
-                    doctor_name = f'Master {doctor_id}'
-
-                # Генерируем слоты с 10:00 до 20:00 с интервалом 30 минут
-                slots = []
-                for hour in range(10, 20):
-                    for minute in [0, 30]:
-                        time_str = f"{hour:02d}:{minute:02d}"
-                        slot = {
-                            'datetime': f"{date} {time_str}",
-                            'date': date,
-                            'time': time_str,
-                            'doctor': doctor_name,
-                            'doctor_id': doctor_id,
-                            'available': True
-                        }
-                        slots.append(slot)
-
-                logger.info(f"YA_SSL: Generated {len(slots)} mock slots for doctor {doctor_name} on {date}")
-                return slots
-
+            # Поддерживаем оба поля для обратной совместимости: doctor_id и master_id
+            target_id = master_id if master_id is not None else doctor_id
+            logger.info(f"YA_SSL: Searching slots for master_id={target_id}, date={date}")
             # Получаем имя врача по ID
             doctor_name = None
             doctors_result = await self.service.get_doctors()
             for doctor in doctors_result.get('doctors', []):
-                if doctor.get('id') == doctor_id:
+                if doctor.get('id') == target_id:
                     doctor_name = doctor.get('name', '')
                     break
 
             if not doctor_name:
-                logger.warning(f"YA_SSL: Doctor with ID {doctor_id} not found")
+                logger.warning(f"YA_SSL: Master with ID {target_id} not found")
                 return []
 
             # Получаем доступные слоты напрямую через API без привязки к конкретной услуге
             # API endpoint: /book_times/{company_id}/{staff_id}/{date}
-            times_data = await self.service.api.get_book_times(doctor_id, date)
+            times_data = await self.service.api.get_book_times(target_id, date)
 
             if not times_data.get('success'):
                 logger.warning(
@@ -373,30 +95,36 @@ class YClientsAdapter:
                         'datetime': f"{date} {time_str}",
                         'date': date,
                         'time': time_str,
-                        'doctor': doctor_name,
-                        'doctor_id': doctor_id,
+                        'doctor': doctor_name,  # backward compatibility
+                        'doctor_id': target_id,  # backward compatibility
+                        'master': doctor_name,
+                        'master_id': target_id,
                         'available': True
                     }
                     all_slots.append(slot)
 
-            logger.info(f"YA_SSL: Found {len(all_slots)} available slots for doctor {doctor_name} on {date}")
+            logger.info(f"YA_SSL: Found {len(all_slots)} available slots for master {doctor_name} on {date}")
             return all_slots
 
         except Exception as e:
             logger.error(f"YA_SSL: Error searching slots: {e}")
             return []
 
-    async def _get_doctor_name_by_id(self, doctor_id: int) -> str:
-        """Получить имя врача по ID."""
+    async def _get_master_name_by_id(self, master_id: int) -> str:
+        """Получить имя мастера по ID."""
         try:
-            doctors = await self.list_doctors()
-            for doctor in doctors:
-                if doctor.get('id') == doctor_id:
-                    return doctor.get('name', '')
+            masters = await self.list_masters()
+            for master in masters:
+                if master.get('id') == master_id:
+                    return master.get('name', '')
             return None
         except Exception as e:
-            logger.error(f"Error getting doctor name by ID {doctor_id}: {e}")
+            logger.error(f"Error getting master name by ID {master_id}: {e}")
             return None
+
+    async def _get_doctor_name_by_id(self, doctor_id: int) -> str:
+        """Алиас для совместимости: получить имя мастера по ID (doctor_id)."""
+        return await self._get_master_name_by_id(doctor_id)
 
     async def _get_service_name_by_id(self, service_id: int) -> str:
         """Получить название услуги по ID."""
@@ -404,7 +132,7 @@ class YClientsAdapter:
             services = await self.list_services()
             for service in services:
                 if service.get('id') == service_id:
-                    return service.get('title', '')
+                    return service.get('name', '')
             return None
         except Exception as e:
             logger.error(f"Error getting service name by ID {service_id}: {e}")
@@ -413,61 +141,82 @@ class YClientsAdapter:
     async def yclients_create_appointment(
             self,
             service_id: int,
-            doctor_id: int,
             datetime: str,
             client_name: str,
             client_phone: str,
+            doctor_id: int = None,
+            master_id: int = None,
             comment: str = "Создано ботом от компании Clientera"
     ) -> Dict[str, Any]:
-        """Создать запись на прием (новый интерфейс для tools)."""
+        """Создать запись на прием (прямой вызов YClients по ID услуг/сотрудника)."""
         try:
-            logger.info(f"Creating appointment: {client_name}, service_id={service_id}, staff_id={doctor_id}, {datetime}")
-            
-            # Просто возвращаем успешный результат без обращения к YClients
-            # Данные сохраняются в системе успешно
-            result = {
-                "success": True,
-                "message": f"Запись успешно создана на {datetime}",
-                "appointment_id": f"app_{int(__import__('time').time())}",
-                "client_name": client_name,
-                "client_phone": client_phone,
-                "service_id": service_id,
-                "staff_id": doctor_id,
-                "datetime": datetime,
-                "comment": comment
-            }
-            
-            logger.info(f"Appointment created successfully for {client_name}")
-            
-            # Отправляем уведомление о новой записи
+            target_id = master_id if master_id is not None else doctor_id
+            logger.info(f"Creating appointment: {client_name}, service_id={service_id}, staff_id={target_id}, {datetime}")
+
+            # Найти или создать клиента
+            client_result = await self.service.api.find_or_create_client(client_name, client_phone)
+            if not client_result.get('success'):
+                return {"success": False, "error": client_result.get('error', 'Failed to find/create client')}
+
+            client_data = client_result.get('data', {})
+            client_email = client_data.get('email') or ""
+
+            # Преобразуем дату/время
             try:
-                # Получаем названия для уведомления
-                service_name = "Услуга"  # Базовое название
-                staff_name = "Сотрудник"  # Базовое название
-                
-                # Пытаемся получить реальные названия
+                dt = datetime.strptime(datetime, "%Y-%m-%d %H:%M")
+                date_str = dt.strftime("%Y-%m-%d")
+                time_str = dt.strftime("%H:%M")
+            except ValueError:
+                return {"success": False, "error": f"Invalid date/time format: {datetime}"}
+
+            record_data = {
+                "company_id": int(self.service.api.company_id),
+                "name": client_name,
+                "phone": client_phone,
+                "email": client_email,
+                "fullname": client_name,
+                "appointments": [{
+                    "id": 1,
+                    "services": [service_id],
+                    "staff_id": target_id,
+                    "datetime": f"{date_str}T{time_str}:00+03:00"
+                }],
+                "comment": comment or "Запись через бота"
+            }
+
+            result = await self.service.api.create_record(record_data)
+
+            if result.get('success'):
+                # Отправляем уведомление
                 try:
                     service_name = await self._get_service_name_by_id(service_id) or f"Услуга #{service_id}"
-                    staff_name = await self._get_doctor_name_by_id(doctor_id) or f"Сотрудник #{doctor_id}"
-                except:
-                    pass  # Используем базовые названия
-                
-                await self.notification_service.send_appointment_notification(
-                    client_name=client_name,
-                    client_phone=client_phone,
-                    service_name=service_name,
-                    master_name=staff_name,
-                    appointment_datetime=datetime,
-                    comment=comment,
-                    booking_source="Telegram Bot Prive7"
-                )
-                
-            except Exception as notification_error:
-                logger.error(f"Failed to send notification: {notification_error}")
-                # Не прерываем выполнение, если уведомление не отправилось
-            
-            return result
-            
+                    staff_name = await self._get_master_name_by_id(target_id) or f"Сотрудник #{target_id}"
+
+                    await self.notification_service.send_appointment_notification(
+                        client_name=client_name,
+                        client_phone=client_phone,
+                        service_name=service_name,
+                        master_name=staff_name,
+                        appointment_datetime=datetime,
+                        comment=comment,
+                        booking_source="Telegram Bot Prive7"
+                    )
+                except Exception as notification_error:
+                    logger.error(f"Failed to send notification: {notification_error}")
+
+                return {
+                    "success": True,
+                    "message": f"Запись успешно создана на {datetime}",
+                    "record_id": (result.get('data') or {}).get('id') if isinstance(result.get('data'), dict) else None,
+                    "client_name": client_name,
+                    "client_phone": client_phone,
+                    "service_id": service_id,
+                    "staff_id": target_id,
+                    "datetime": datetime
+                }
+
+            return {"success": False, "error": result.get('error', 'Unknown error')}
+
         except Exception as e:
             logger.error(f"Error in yclients_create_appointment: {e}")
             return {"success": False, "error": str(e)}
@@ -479,51 +228,33 @@ class YClientsAdapter:
             service: str,
             doctor: str,
             datetime_str: str,
+            master: Optional[str] = None,
             comment: str = "Создано ботом от компании Clientera"
     ) -> Dict[str, Any]:
         """Создать запись на прием."""
         try:
-            # В демо-режиме эмулируем успешную запись
-            if self.settings.DEMO:
-                logger.info(f"Demo mode: simulating appointment creation for {patient_name}")
-                result = {
-                    "success": True,
-                    "appointment_id": f"demo_{int(datetime.now().timestamp())}",
-                    "message": "Запись создана (демо-режим)"
-                }
-            else:
-                result = await self.service.book_appointment(
-                    patient_name=patient_name,
-                    phone=phone,
-                    service=service,
-                    doctor=doctor,
-                    datetime_str=datetime_str,
-                    comment=comment
-                )
+            # Поддержка алиаса: если передан master, используем его как имя специалиста
+            doctor_name = doctor or master
+            result = await self.service.book_appointment(
+                patient_name=patient_name,
+                phone=phone,
+                service=service,
+                doctor=doctor_name,
+                datetime_str=datetime_str,
+                comment=comment
+            )
 
             if result.get('success'):
                 logger.info(f"Created appointment for {patient_name}")
 
                 # Отправляем уведомление о новой записи
                 try:
-                    # Пытаемся найти цену услуги
-                    service_price = None
-                    if self.settings.DEMO:
-                        # В демо-режиме ищем цену в моковых данных
-                        for mock_service in MOCK_SERVICES:
-                            if service.lower() in mock_service['name'].lower() or mock_service[
-                                'name'].lower() in service.lower():
-                                service_price = mock_service['price']
-                                break
-
-                    # Отправляем уведомление
                     await self.notification_service.send_appointment_notification(
                         client_name=patient_name,
                         client_phone=phone,
                         service_name=service,
-                        master_name=doctor,
+                        master_name=doctor_name,
                         appointment_datetime=datetime_str,
-                        price=service_price,
                         comment=comment,
                         booking_source="Telegram Bot Prive7"
                     )
@@ -546,6 +277,7 @@ class YClientsAdapter:
             phone: str = None,
             service: str = None,
             doctor: str = None,
+            master: str = None,
             datetime: str = None,
             datetime_str: str = None,
             comment: str = "",
@@ -574,54 +306,41 @@ class YClientsAdapter:
             phone=phone,
             service=service,
             doctor=doctor,
+            master=master or kwargs.get('master'),
             datetime_str=final_datetime_str,
             comment=comment
         )
 
-    async def list_doctors(self, specialization: str = "все") -> List[Dict[str, Any]]:
-        """Получить список мастеров салона красоты."""
+    async def list_masters(self, specialization: str = "все") -> List[Dict[str, Any]]:
+        """Получить список мастеров салона красоты (masters)."""
         try:
-            # В демо-режиме используем моковые данные
-            if self.settings.DEMO:
-                logger.info("Using mock data for masters list (DEMO mode)")
-                masters = MOCK_MASTERS.copy()
-
-                # Фильтруем по специализации если указана
-                if specialization and specialization != "все":
-                    filtered_masters = []
-                    for master in masters:
-                        # Проверяем в списке специализаций мастера
-                        if any(spec.lower() in specialization.lower() or specialization.lower() in spec.lower()
-                               for spec in master.get('specializations', [])):
-                            filtered_masters.append(master)
-                    masters = filtered_masters
-
-                logger.info(f"Retrieved {len(masters)} masters (DEMO mode, specialization: {specialization})")
-                return masters
-            else:
-                # В продакшене используем реальный API
-                result = await self.service.get_doctors(specialization)
-                doctors = result.get('doctors', [])
-                logger.info(f"Retrieved {len(doctors)} masters from API")
-                return doctors
+            result = await self.service.get_doctors(specialization)
+            masters = result.get('doctors', [])
+            logger.info(f"Retrieved {len(masters)} masters from API")
+            return masters
 
         except Exception as e:
             logger.error(f"Error retrieving masters: {e}")
             return []
 
+    async def list_doctors(self, specialization: str = "все") -> List[Dict[str, Any]]:
+        """Алиас для совместимости: получить список мастеров (doctors)."""
+        return await self.list_masters(specialization)
+
     async def list_branches(self) -> List[Dict[str, Any]]:
         """Получить список филиалов."""
         try:
-            # Заглушка - возвращаем один филиал на основе company_id
-            company_id = os.getenv('YCLIENTS_COMPANY_ID', '1483482')
-            branches = [
-                {
-                    'id': int(company_id),
-                    'name': 'Стоматологическая клиника',
-                    'address': 'Основной филиал',
-                    'phone': '+7 (XXX) XXX-XX-XX'
-                }
-            ]
+            # Получаем информацию о компании из YClients
+            company_info = await self.service.api.get_company_info()
+            branches: List[Dict[str, Any]] = []
+            if company_info.get('success') and company_info.get('data'):
+                data = company_info['data']
+                branches.append({
+                    'id': int(self.service.api.company_id),
+                    'name': data.get('title') or data.get('name') or 'Компания',
+                    'address': data.get('address') or '',
+                    'phone': data.get('phone') or ''
+                })
             logger.info(f"Retrieved {len(branches)} branches")
             return branches
         except Exception as e:
@@ -708,11 +427,13 @@ class YClientsAdapter:
                 }
 
             # Используем данные из профиля для записи
+            # Поддерживаем алиас master через kwargs
             result = await self.create_appointment(
                 patient_name=profile.name,
                 phone=profile.phone,
                 service=service,
-                doctor=doctor,
+                doctor=doctor or kwargs.get('master'),
+                master=kwargs.get('master'),
                 datetime_str=datetime,
                 comment=comment
             )
