@@ -117,103 +117,100 @@ YCLIENTS_TOOLS: List[Tool] = [
         }
     ),
 
-    # Закомментированы инструменты работы с профилями
-    # Tool(
-    #     name="get_user_info",
-    #     type="function",
-    #     description="Получить информацию о пользователе: сначала из локального профиля, если нет - из Telegram. Если telegram_id не указан, используется ID текущего пользователя",
-    #     parameters={
-    #         "type": "object",
-    #         "properties": {
-    #             "telegram_id": {
-    #                 "type": "integer",
-    #                 "description": "ID пользователя в Telegram (опционально, по умолчанию текущий пользователь)"
-    #             }
-    #         },
-    #         "required": []
-    #     }
-    # ),
-
-    # Tool(
-    #     name="register_user",
-    #     type="function",
-    #     description="Зарегистрировать нового пользователя в системе с созданием профиля в YClients",
-    #     parameters={
-    #         "type": "object",
-    #         "properties": {
-    #             "telegram_id": {
-    #                 "type": "integer",
-    #                 "description": "ID пользователя в Telegram"
-    #             },
-    #             "name": {
-    #                 "type": "string",
-    #                 "description": "Полное имя пользователя",
-    #                 "minLength": 2,
-    #                 "maxLength": 100
-    #             },
-    #             "phone": {
-    #                 "type": "string",
-    #                 "description": "Номер телефона в формате +7XXXXXXXXXX",
-    #                 "pattern": "^\\+7\\d{10}$"
-    #             }
-    #         },
-    #         "required": ["telegram_id", "name", "phone"]
-    #     }
-    # ),
-
-    # Tool(
-    #     name="book_appointment_with_profile",
-    #     type="function",
-    #     description="Записать пользователя на прием используя сохраненный профиль (не требует имя и телефон)",
-    #     parameters={
-    #         "type": "object",
-    #         "properties": {
-    #             "telegram_id": {
-    #                 "type": "integer",
-    #                 "description": "ID пользователя в Telegram"
-    #             },
-    #             "service": {
-    #                 "type": "string",
-    #                 "description": "Название услуги"
-    #             },
-    #             "doctor": {
-    #                 "type": "string",
-    #                 "description": "Имя врача"
-    #             },
-    #             "datetime": {
-    #                 "type": "string",
-    #                 "description": "Дата и время записи в формате YYYY-MM-DD HH:MM или YYYY-MM-DDTHH:MM"
-    #             },
-    #             "comment": {
-    #                 "type": "string",
-    #                 "description": "Комментарий к записи (опционально)",
-    #                 "maxLength": 500
-    #             }
-    #         },
-    #         "required": ["telegram_id", "service", "doctor", "datetime"]
-    #     }
-    # ),
-
-    # Tool(
-    #     name="sync_user_profile",
-    #     type="function",
-    #     description="Синхронизировать профиль пользователя с данными из YClients",
-    #     parameters={
-    #         "type": "object",
-    #         "properties": {
-    #             "telegram_id": {
-    #                 "type": "integer",
-    #                 "description": "ID пользователя в Telegram"
-    #             },
-    #             "phone": {
-    #                 "type": "string",
-    #                 "description": "Номер телефона для поиска в YClients (опционально)",
-    #                 "pattern": "^\\+7\\d{10}$"
-    #             }
-    #         },
-    #         "required": ["telegram_id"]
-    #     }
-    # ),
+     Закомментированы инструменты работы с профилями
+     Tool(
+         name="get_user_info",
+         type="function",
+         description="Получить информацию о пользователе: сначала из локального профиля, если нет - из Telegram. Если telegram_id не указан, используется ID текущего пользователя",
+         parameters={
+             "type": "object",
+             "properties": {
+                 "telegram_id": {
+                     "type": "integer",
+                     "description": "ID пользователя в Telegram (опционально, по умолчанию текущий пользователь)"
+                 }
+             },
+             "required": []
+         }
+     ),
+     Tool(
+         name="register_user",
+         type="function",
+         description="Зарегистрировать нового пользователя в системе с созданием профиля в YClients",
+         parameters={
+             "type": "object",
+             "properties": {
+                 "telegram_id": {
+                     "type": "integer",
+                     "description": "ID пользователя в Telegram"
+                 },
+                 "name": {
+                     "type": "string",
+                     "description": "Полное имя пользователя",
+                     "minLength": 2,
+                     "maxLength": 100
+                 },
+                 "phone": {
+                     "type": "string",
+                     "description": "Номер телефона в формате +7XXXXXXXXXX",
+                     "pattern": "^\\+7\\d{10}$"
+                 }
+             },
+             "required": ["telegram_id", "name", "phone"]
+         }
+     ),
+     Tool(
+         name="book_appointment_with_profile",
+         type="function",
+         description="Записать пользователя на прием используя сохраненный профиль (не требует имя и телефон)",
+         parameters={
+             "type": "object",
+             "properties": {
+                 "telegram_id": {
+                     "type": "integer",
+                     "description": "ID пользователя в Telegram"
+                 },
+                 "service": {
+                     "type": "string",
+                     "description": "Название услуги"
+                 },
+                 "doctor": {
+                     "type": "string",
+                     "description": "Имя врача"
+                 },
+                 "datetime": {
+                     "type": "string",
+                     "description": "Дата и время записи в формате YYYY-MM-DD HH:MM или YYYY-MM-DDTHH:MM"
+                 },
+                 "comment": {
+                     "type": "string",
+                     "description": "Комментарий к записи (опционально)",
+                     "maxLength": 500
+                 }
+             },
+             "required": ["telegram_id", "service", "doctor", "datetime"]
+         }
+     ),
+     Tool(
+         name="sync_user_profile",
+         type="function",
+         description="Синхронизировать профиль пользователя с данными из YClients",
+         parameters={
+             "type": "object",
+             "properties": {
+                 "telegram_id": {
+                     "type": "integer",
+                     "description": "ID пользователя в Telegram"
+                 },
+                 "phone": {
+                     "type": "string",
+                     "description": "Номер телефона для поиска в YClients (опционально)",
+                     "pattern": "^\\+7\\d{10}$"
+                 }
+             },
+             "required": ["telegram_id"]
+         }
+     ),
 
 ]
 
@@ -354,8 +351,8 @@ def get_system_instructions() -> str:
     settings = Settings()
     
     # Используем переменную окружения, если она задана, иначе дефолтный промпт
-    if settings.SYSTEM_INSTRUCTIONS:
-        return settings.SYSTEM_INSTRUCTIONS
+    # if settings.SYSTEM_INSTRUCTIONS:
+    # return settings.SYSTEM_INSTRUCTIONS
     
     return SYSTEM_INSTRUCTIONS
 
