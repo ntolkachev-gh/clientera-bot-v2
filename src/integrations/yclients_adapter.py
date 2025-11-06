@@ -55,10 +55,21 @@ class YClientsAdapter:
             date: str = None,
             master_id: int = None
     ) -> List[Dict[str, Any]]:
-        """Найти свободные слоты для записи на услугу для конкретного врача на конкретную дату."""
+        """Найти свободные слоты для записи на услугу для конкретного мастера на конкретную дату."""
         try:
             # Поддерживаем оба поля для обратной совместимости: doctor_id и master_id
             target_id = master_id if master_id is not None else doctor_id
+            
+            # Логирование запроса
+            request_params = {
+                "master_id": master_id,
+                "doctor_id": doctor_id,
+                "target_id": target_id,
+                "date": date,
+                "company_id": self.service.api.company_id
+            }
+            logger.info(f"YA_SSL_REQUEST: search_slots called with params: {request_params}")
+            
             logger.info(f"YA_SSL: Searching slots for master_id={target_id}, date={date}")
             # Получаем имя врача по ID
             doctor_name = None
@@ -75,6 +86,9 @@ class YClientsAdapter:
             # Получаем доступные слоты напрямую через API без привязки к конкретной услуге
             # API endpoint: /book_times/{company_id}/{staff_id}/{date}
             times_data = await self.service.api.get_book_times(target_id, date)
+            
+            # Логирование ответа
+            logger.info(f"YA_SSL_RESPONSE: API response for master_id={target_id}, date={date}: success={times_data.get('success')}, data_length={len(times_data.get('data', []))}, full_response={times_data}")
 
             if not times_data.get('success'):
                 logger.warning(
