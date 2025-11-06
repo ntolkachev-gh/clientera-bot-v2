@@ -102,8 +102,43 @@ class YClientsAdapter:
             logger.info(f"YA_SSL_RESPONSE: API response for master_id={target_id}, date={date}: success={times_data.get('success')}, data_length={len(times_data.get('data', []))}, full_response={times_data}")
 
             if not times_data.get('success'):
+                error_msg = times_data.get('error', 'Unknown error')
+                status_code = times_data.get('status_code', 'Unknown')
                 logger.warning(
-                    f"YA_SSL: Failed to get book times for doctor {doctor_id} on {date}: {times_data.get('error', 'Unknown error')}")
+                    f"YA_SSL: Failed to get book times for master {target_id} on {date}: {error_msg} (status: {status_code})")
+                
+                # Если ошибка 401/403, возможно проблема с авторизацией
+                if status_code in [401, 403]:
+                    logger.error(f"YA_SSL: Authorization error for book_times endpoint. Check user token.")
+                
+                # Попробуем альтернативный способ через search_appointments
+                logger.info(f"YA_SSL: Trying alternative method via search_appointments")
+                try:
+                    alt_result = await self.service.search_appointments("", doctor_name, date)
+                    alt_appointments = alt_result.get('appointments', [])
+                    if alt_appointments:
+                        logger.info(f"YA_SSL: Alternative method found {len(alt_appointments)} slots")
+                        # Преобразуем в нужный формат
+                        alt_slots = []
+                        for apt in alt_appointments:
+                            datetime_str = apt.get('datetime', '')
+                            if ' ' in datetime_str:
+                                date_part, time_part = datetime_str.split(' ', 1)
+                                slot = {
+                                    'datetime': datetime_str,
+                                    'date': date_part,
+                                    'time': time_part,
+                                    'doctor': doctor_name,
+                                    'doctor_id': target_id,
+                                    'master': doctor_name,
+                                    'master_id': target_id,
+                                    'available': True
+                                }
+                                alt_slots.append(slot)
+                        return alt_slots
+                except Exception as alt_error:
+                    logger.error(f"YA_SSL: Alternative method also failed: {alt_error}")
+                
                 return []
 
             times = times_data.get('data', [])

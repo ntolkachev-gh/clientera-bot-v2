@@ -38,6 +38,7 @@ class YClientsAPI:
             headers['Authorization'] = f'Bearer {self.token}'
 
         logger.debug(f"YClients API {method} {url}")
+        logger.debug(f"YClients API Authorization header: {headers.get('Authorization', 'Not set')}")
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -110,7 +111,12 @@ class YClientsAPI:
     async def get_book_times(self, staff_id: int, date: str, service_id: Optional[int] = None) -> Dict[str, Any]:
         """Получает доступные времена для записи на конкретную дату"""
         endpoint = f'book_times/{self.company_id}/{staff_id}/{date}'
-        return await self._make_request('GET', endpoint)
+        logger.info(f"YC_API: Requesting book_times - endpoint: {endpoint}, staff_id: {staff_id}, date: {date}, service_id: {service_id}")
+        
+        result = await self._make_request('GET', endpoint)
+        logger.info(f"YC_API: book_times response - success: {result.get('success')}, status_code: {result.get('status_code')}, data_count: {len(result.get('data', []))}")
+        
+        return result
 
     async def create_record(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает запись на прием"""

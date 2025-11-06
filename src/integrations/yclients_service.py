@@ -47,6 +47,12 @@ class YClientsService:
                 logger.warning(f"Failed to get user token: {e}")
         
         logger.info("YClients Service initialized")
+        
+        # Логируем статус авторизации
+        if self.api.user_token:
+            logger.info("✅ YClients service initialized with user token")
+        else:
+            logger.warning("⚠️ YClients service initialized WITHOUT user token - some endpoints may not work")
     
     async def _setup_user_token(self, login: str, password: str):
         """Асинхронная настройка user token."""
@@ -256,7 +262,7 @@ class YClientsService:
                 return {"appointments": []}
 
             # 4. Получить доступные времена
-            times_data = await self.api.get_book_times(staff_id, service_id, search_date)
+            times_data = await self.api.get_book_times(staff_id, search_date, service_id)
             
             if not times_data.get('success'):
                 logger.warning(f"Failed to get available times: {times_data.get('error', 'Unknown error')}")
