@@ -56,6 +56,9 @@ class YClientsAPI:
                     
                     # Нормализуем ответ - если это не словарь, оборачиваем
                     if isinstance(response_data, dict):
+                        # Если это словарь, но нет поля success, добавляем его
+                        if 'success' not in response_data:
+                            response_data['success'] = True
                         return response_data
                     else:
                         # Если ответ не словарь (например, список), оборачиваем его
@@ -114,7 +117,21 @@ class YClientsAPI:
         logger.info(f"YC_API: Requesting book_times - endpoint: {endpoint}, staff_id: {staff_id}, date: {date}, service_id: {service_id}")
         
         result = await self._make_request('GET', endpoint)
-        logger.info(f"YC_API: book_times response - success: {result.get('success')}, status_code: {result.get('status_code')}, data_count: {len(result.get('data', []))}")
+        
+        # Детальное логирование ответа
+        success = result.get('success')
+        status_code = result.get('status_code')
+        data = result.get('data', [])
+        data_count = len(data) if isinstance(data, list) else 0
+        
+        logger.info(f"YC_API: book_times response - success: {success}, status_code: {status_code}, data_count: {data_count}")
+        logger.debug(f"YC_API: book_times full response: {result}")
+        
+        if success and data_count > 0:
+            logger.info(f"YC_API: Found {data_count} time slots")
+            # Логируем первые несколько слотов для проверки
+            for i, slot in enumerate(data[:3]):
+                logger.debug(f"YC_API: Slot {i+1}: {slot}")
         
         return result
 
