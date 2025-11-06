@@ -46,16 +46,34 @@ class YClientsAdapter:
             
             result = await self.service.get_services(category)
             
-            # Логирование ответа
+            # Логирование ответа (сокращенное)
             services = result.get('services', [])
-            logger.info(f"YA_LS_RESPONSE: API response for category={category}: services_count={len(services)}, full_response_keys={list(result.keys())}, full_response={result}")
+            sample_services = services[:3] if len(services) > 3 else services  # Показываем только первые 3 услуги
+            logger.info(f"YA_LS_RESPONSE: API response for category={category}: services_count={len(services)}, response_keys={list(result.keys())}, sample_services={sample_services}")
 
             # Применяем лимит если указан
             if limit and limit > 0:
                 services = services[:limit]
 
-            logger.info(f"Retrieved {len(services)} services (limit: {limit})")
-            return services
+            # Сокращаем данные для LLM - убираем лишние поля
+            simplified_services = []
+            for service in services:
+                simplified_service = {
+                    "id": service.get("id"),
+                    "name": service.get("name"),
+                    "price_from": service.get("price_from"),
+                    "price_to": service.get("price_to"),
+                    "duration": service.get("duration")
+                }
+                # Добавляем описание только если оно короткое
+                description = service.get("description", "")
+                if description and len(description) <= 100:
+                    simplified_service["description"] = description
+                
+                simplified_services.append(simplified_service)
+
+            logger.info(f"Retrieved {len(simplified_services)} services (limit: {limit})")
+            return simplified_services
         except Exception as e:
             logger.error(f"Error retrieving services: {e}")
             return []
@@ -98,8 +116,10 @@ class YClientsAdapter:
             # API endpoint: /book_times/{company_id}/{staff_id}/{date}
             times_data = await self.service.api.get_book_times(target_id, date)
             
-            # Логирование ответа
-            logger.info(f"YA_SSL_RESPONSE: API response for master_id={target_id}, date={date}: success={times_data.get('success')}, data_length={len(times_data.get('data', []))}, full_response={times_data}")
+            # Логирование ответа (сокращенное)
+            data = times_data.get('data', [])
+            sample_slots = data[:3] if len(data) > 3 else data  # Показываем только первые 3 слота
+            logger.info(f"YA_SSL_RESPONSE: API response for master_id={target_id}, date={date}: success={times_data.get('success')}, slots_count={len(data)}, sample_slots={sample_slots}")
 
             if not times_data.get('success'):
                 error_msg = times_data.get('error', 'Unknown error')
@@ -118,18 +138,16 @@ class YClientsAdapter:
                     alt_appointments = alt_result.get('appointments', [])
                     if alt_appointments:
                         logger.info(f"YA_SSL: Alternative method found {len(alt_appointments)} slots")
-                        # Преобразуем в нужный формат
+                        # Преобразуем в сокращенный формат для LLM
                         alt_slots = []
                         for apt in alt_appointments:
                             datetime_str = apt.get('datetime', '')
                             if ' ' in datetime_str:
                                 date_part, time_part = datetime_str.split(' ', 1)
+                                # Возвращаем только необходимые поля
                                 slot = {
-                                    'datetime': datetime_str,
-                                    'date': date_part,
                                     'time': time_part,
-                                    'doctor': doctor_name,
-                                    'doctor_id': target_id,
+                                    'datetime': datetime_str,
                                     'master': doctor_name,
                                     'master_id': target_id,
                                     'available': True
@@ -146,17 +164,15 @@ class YClientsAdapter:
                 logger.info(f"YA_SSL: No available slots found for doctor {doctor_name} on {date}")
                 return []
 
-            # Формируем список доступных слотов
+            # Формируем сокращенный список доступных слотов для LLM
             all_slots = []
             for time_slot in times:
                 time_str = time_slot.get('time', '')
                 if time_str:
+                    # Возвращаем только необходимые поля для экономии токенов
                     slot = {
-                        'datetime': f"{date} {time_str}",
-                        'date': date,
                         'time': time_str,
-                        'doctor': doctor_name,  # backward compatibility
-                        'doctor_id': target_id,  # backward compatibility
+                        'datetime': f"{date} {time_str}",
                         'master': doctor_name,
                         'master_id': target_id,
                         'available': True
@@ -211,6 +227,21 @@ class YClientsAdapter:
         """Создать запись на прием (прямой вызов YClients по ID услуг/сотрудника)."""
         try:
             target_id = master_id if master_id is not None else doctor_id
+            
+            # Логирование запроса
+            request_params = {
+                "service_id": service_id,
+                "master_id": master_id,
+                "doctor_id": doctor_id,
+                "target_id": target_id,
+                "datetime": datetime,
+                "client_name": client_name,
+                "client_phone": client_phone,
+                "comment": comment,
+                "company_id": self.service.api.company_id
+            }
+            logger.info(f"YA_YCA_REQUEST: yclients_create_appointment called with params: {request_params}")
+            
             logger.info(f"Creating appointment: {client_name}, service_id={service_id}, staff_id={target_id}, {datetime}")
 
             # Найти или создать клиента
@@ -245,6 +276,11 @@ class YClientsAdapter:
             }
 
             result = await self.service.api.create_record(record_data)
+            
+            # Логирование ответа (сокращенное)
+            record_id = result.get('data', {}).get('id') if isinstance(result.get('data'), dict) else 'N/A'
+            error_msg = result.get('error', 'N/A') if not result.get('success') else 'N/A'
+            logger.info(f"YA_YCA_RESPONSE: API response for appointment creation: success={result.get('success')}, record_id={record_id}, error={error_msg}")
 
             if result.get('success'):
                 # Отправляем уведомление
@@ -293,6 +329,18 @@ class YClientsAdapter:
     ) -> Dict[str, Any]:
         """Создать запись на прием."""
         try:
+            # Логирование запроса
+            request_params = {
+                "patient_name": patient_name,
+                "phone": phone,
+                "service": service,
+                "doctor": doctor,
+                "master": master,
+                "datetime_str": datetime_str,
+                "comment": comment
+            }
+            logger.info(f"YA_CA_REQUEST: create_appointment called with params: {request_params}")
+            
             # Поддержка алиаса: если передан master, используем его как имя специалиста
             doctor_name = doctor or master
             result = await self.service.book_appointment(
@@ -303,6 +351,12 @@ class YClientsAdapter:
                 datetime_str=datetime_str,
                 comment=comment
             )
+            
+            # Логирование ответа (сокращенное)
+            success = result.get('success')
+            message = result.get('message', 'N/A')
+            error = result.get('error', 'N/A') if not success else 'N/A'
+            logger.info(f"YA_CA_RESPONSE: Service response for appointment creation: success={success}, message={message}, error={error}")
 
             if result.get('success'):
                 logger.info(f"Created appointment for {patient_name}")
@@ -344,6 +398,20 @@ class YClientsAdapter:
             **kwargs
     ) -> Dict[str, Any]:
         """Записать пациента на прием (алиас для create_appointment)."""
+        # Логирование запроса
+        request_params = {
+            "patient_name": patient_name,
+            "phone": phone,
+            "service": service,
+            "doctor": doctor,
+            "master": master,
+            "datetime": datetime,
+            "datetime_str": datetime_str,
+            "comment": comment,
+            "kwargs": kwargs
+        }
+        logger.info(f"YA_BA_REQUEST: book_appointment called with params: {request_params}")
+        
         # Обрабатываем разные варианты передачи параметров
         datetime_value = datetime_str or datetime or kwargs.get('datetime') or kwargs.get('datetime_str')
 
@@ -361,7 +429,7 @@ class YClientsAdapter:
 
         final_datetime_str = datetime_value
 
-        return await self.create_appointment(
+        result = await self.create_appointment(
             patient_name=patient_name,
             phone=phone,
             service=service,
@@ -370,14 +438,38 @@ class YClientsAdapter:
             datetime_str=final_datetime_str,
             comment=comment
         )
+        
+        # Логирование ответа (сокращенное)
+        success = result.get('success')
+        message = result.get('message', 'N/A')
+        error = result.get('error', 'N/A') if not success else 'N/A'
+        logger.info(f"YA_BA_RESPONSE: book_appointment result: success={success}, message={message}, error={error}")
+        
+        return result
 
     async def list_masters(self, specialization: str = "все") -> List[Dict[str, Any]]:
         """Получить список мастеров салона красоты (masters)."""
         try:
             result = await self.service.get_doctors(specialization)
             masters = result.get('doctors', [])
-            logger.info(f"Retrieved {len(masters)} masters from API")
-            return masters
+            
+            # Сокращаем данные для LLM - оставляем только необходимые поля
+            simplified_masters = []
+            for master in masters:
+                simplified_master = {
+                    "id": master.get("id"),
+                    "name": master.get("name"),
+                    "position": master.get("position")
+                }
+                # Добавляем специализацию только если она короткая
+                specialization_text = master.get("specialization", "")
+                if specialization_text and len(specialization_text) <= 100:
+                    simplified_master["specialization"] = specialization_text
+                
+                simplified_masters.append(simplified_master)
+            
+            logger.info(f"Retrieved {len(simplified_masters)} masters from API")
+            return simplified_masters
 
         except Exception as e:
             logger.error(f"Error retrieving masters: {e}")
@@ -476,6 +568,17 @@ class YClientsAdapter:
     ) -> Dict[str, Any]:
         """Записать пользователя на прием используя его профиль."""
         try:
+            # Логирование запроса
+            request_params = {
+                "telegram_id": telegram_id,
+                "service": service,
+                "doctor": doctor,
+                "datetime": datetime,
+                "comment": comment,
+                "kwargs": kwargs
+            }
+            logger.info(f"YA_BAWP_REQUEST: book_appointment_with_profile called with params: {request_params}")
+            
             # Получаем профиль пользователя
             profile = self.profile_manager.get_profile(telegram_id)
 
@@ -498,6 +601,12 @@ class YClientsAdapter:
                 comment=comment
             )
 
+            # Логирование ответа (сокращенное)
+            success = result.get('success')
+            message = result.get('message', 'N/A')
+            error = result.get('error', 'N/A') if not success else 'N/A'
+            logger.info(f"YA_BAWP_RESPONSE: book_appointment_with_profile result for user {telegram_id}: success={success}, message={message}, error={error}")
+            
             if result.get('success'):
                 logger.info(f"Appointment booked for user {telegram_id} using profile")
                 # Уведомление уже отправлено в create_appointment

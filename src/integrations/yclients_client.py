@@ -125,13 +125,14 @@ class YClientsAPI:
         data_count = len(data) if isinstance(data, list) else 0
         
         logger.info(f"YC_API: book_times response - success: {success}, status_code: {status_code}, data_count: {data_count}")
-        logger.debug(f"YC_API: book_times full response: {result}")
         
         if success and data_count > 0:
             logger.info(f"YC_API: Found {data_count} time slots")
-            # Логируем первые несколько слотов для проверки
-            for i, slot in enumerate(data[:3]):
-                logger.debug(f"YC_API: Slot {i+1}: {slot}")
+            # Логируем только первые 3 слота для проверки (сокращенно)
+            sample_slots = data[:3] if len(data) > 3 else data
+            logger.debug(f"YC_API: Sample slots: {sample_slots}")
+        elif not success:
+            logger.debug(f"YC_API: Error details: {result.get('error', 'Unknown error')}")
         
         return result
 
