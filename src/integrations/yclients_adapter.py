@@ -36,8 +36,19 @@ class YClientsAdapter:
     async def list_services(self, category: str = "все", limit: int = 50) -> List[Dict[str, Any]]:
         """Получить список услуг."""
         try:
+            # Логирование запроса
+            request_params = {
+                "category": category,
+                "limit": limit,
+                "company_id": self.service.api.company_id
+            }
+            logger.info(f"YA_LS_REQUEST: list_services called with params: {request_params}")
+            
             result = await self.service.get_services(category)
+            
+            # Логирование ответа
             services = result.get('services', [])
+            logger.info(f"YA_LS_RESPONSE: API response for category={category}: services_count={len(services)}, full_response_keys={list(result.keys())}, full_response={result}")
 
             # Применяем лимит если указан
             if limit and limit > 0:
